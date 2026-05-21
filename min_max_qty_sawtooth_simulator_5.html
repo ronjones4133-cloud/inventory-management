@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Min/Max Inventory Planning Simulator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1a2535; min-height: 100vh; display: flex; flex-direction: column; }
+
+  header { background: linear-gradient(135deg, #1F4E79 0%, #2e6fa3 100%); color: white; padding: 22px 32px 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+  header h1 { font-size: 22px; font-weight: 700; }
+  header p { font-size: 13px; opacity: 0.82; margin-top: 4px; }
+
+  .main { flex: 1; max-width: 1100px; width: 100%; margin: 24px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 18px; }
+
+  .card { background: white; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,0.09); padding: 20px 24px; }
+  .card-title { font-size: 12px; font-weight: 700; color: #1F4E79; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; border-bottom: 2px solid #e8f0f8; padding-bottom: 8px; }
+
+  .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; }
+  .ctrl { display: flex; flex-direction: column; gap: 6px; }
+  .ctrl-header { display: flex; justify-content: space-between; align-items: baseline; }
+  .ctrl-label { font-size: 13px; font-weight: 600; color: #344563; }
+  .ctrl-value { font-size: 15px; font-weight: 700; color: #1F4E79; min-width: 90px; text-align: right; }
+  input[type=range] { width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: #d0e4f5; border-radius: 3px; outline: none; cursor: pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #1F4E79; border: 2px solid white; box-shadow: 0 1px 4px rgba(0,0,0,0.25); cursor: pointer; }
+  .ctrl-range { display: flex; justify-content: space-between; font-size: 10px; color: #8fa3b8; margin-top: 1px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .stat { background: #f5f9fe; border-radius: 8px; padding: 12px 14px; border-left: 3px solid #1F4E79; }
+  .stat-label { font-size: 11px; color: #7a8fa3; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .stat-val { font-size: 18px; font-weight: 700; color: #1F4E79; }
+
+  .validation-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .validation-row2 { display: grid; grid-template-columns: repeat(3, 1fr) auto auto; gap: 12px; margin-top: 12px; align-items: end; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 12px; font-weight: 600; color: #344563; }
+  .field input { border: 1.5px solid #c8d8e8; border-radius: 6px; padding: 8px 10px; font-size: 13px; color: #1a2535; outline: none; width: 100%; transition: border-color 0.15s; }
+  .field input:focus { border-color: #1F4E79; }
+  .field .hint { font-size: 10px; color: #8fa3b8; }
+  .field .hint.warn { color: #e67e22; font-weight: 600; }
+
+  .btn-validate { background: #1F4E79; color: white; border: none; border-radius: 6px; padding: 9px 20px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.15s; height: 38px; }
+  .btn-validate:hover { background: #2e6fa3; }
+  .btn-clear { background: #e8eef5; color: #344563; border: none; border-radius: 6px; padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer; height: 38px; transition: background 0.15s; }
+  .btn-clear:hover { background: #d0dde8; }
+
+  .pipeline-note { background: #fffbf0; border: 1px solid #f0d080; border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #7a5c00; margin-top: 10px; line-height: 1.6; display: none; }
+  .pipeline-note strong { color: #5a4000; }
+
+  .verdict { margin-top: 14px; border-radius: 8px; padding: 14px 18px; font-size: 14px; line-height: 1.7; display: none; }
+  .verdict.should-buy { background: #fff0f0; border-left: 4px solid #c0392b; }
+  .verdict.no-buy     { background: #f0fff4; border-left: 4px solid #27ae60; }
+  .verdict.borderline { background: #fffbf0; border-left: 4px solid #e67e22; }
+  .verdict-title { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+  .verdict.should-buy .verdict-title { color: #c0392b; }
+  .verdict.no-buy     .verdict-title { color: #27ae60; }
+  .verdict.borderline .verdict-title { color: #e67e22; }
+  .verdict-detail { font-size: 12.5px; color: #5a6e82; margin-top: 8px; border-top: 1px solid rgba(0,0,0,0.07); padding-top: 8px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; font-size: 12px; color: #5a6e82; }
+  .li { display: flex; align-items: center; gap: 6px; }
+  .chart-wrap { position: relative; width: 100%; height: 380px; }
+
+  .insight { background: #f0f7ff; border-left: 4px solid #2e6fa3; border-radius: 0 8px 8px 0; padding: 12px 16px; font-size: 13px; color: #2c3e50; line-height: 1.6; margin-top: 14px; }
+  .insight strong { color: #1F4E79; }
+
+  .item-badge { display: inline-flex; align-items: center; gap: 8px; background: #1F4E79; color: white; border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+
+  footer { background: #1a2535; color: #8fa3b8; text-align: center; padding: 18px 20px; font-size: 13px; line-height: 1.8; }
+  footer a { color: #5ba3d9; text-decoration: none; font-weight: 500; }
+  footer a:hover { color: #85c1e9; text-decoration: underline; }
+
+  .slider-row { display: flex; align-items: center; gap: 8px; }
+  .slider-row input[type=range] { flex: 1; }
+  .adj-btn {
+    width: 28px; height: 28px; border-radius: 6px; border: 1.5px solid #c8d8e8;
+    background: #f5f9fe; color: #1F4E79; font-size: 16px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; line-height: 1; transition: background 0.12s, border-color 0.12s;
+    padding: 0;
+  }
+  .adj-btn:hover { background: #dceeff; border-color: #1F4E79; }
+  .adj-btn:active { background: #1F4E79; color: white; }
+
+  @media (max-width: 700px) {
+    .controls-grid, .validation-grid, .validation-row2 { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h1>Min/Max Inventory Planning Simulator</h1>
+    <p>Visualize replenishment cycles using Min/Max planning logic, then validate real items against your reorder trigger.</p>
+  </div>
+  <div style="text-align:right;flex-shrink:0;">
+    <div style="font-size:13px;font-weight:600;color:white;opacity:0.95;">Developed by Ron Jones</div>
+    <a href="https://www.linkedin.com/in/ronjones4133/" target="_blank" rel="noopener"
+       style="font-size:12px;color:#85c1e9;text-decoration:none;opacity:0.9;">
+      Connect on LinkedIn ↗
+    </a>
+  </div>
+</header>
+
+<div class="main">
+
+  <div class="card">
+    <div class="card-title">Planning Parameters</div>
+    <div class="controls-grid">
+      <div class="ctrl">
+        <div class="ctrl-header"><span class="ctrl-label">Average Daily Usage (ADU)</span><span class="ctrl-value" id="v-adu">200 units</span></div>
+        <div class="slider-row"><button class="adj-btn" onclick="adjustSlider('adu',-10)" aria-label="Decrease adu">−</button><input type="range" id="adu" min="10" max="10000" value="200" step="10"><button class="adj-btn" onclick="adjustSlider('adu',10)" aria-label="Increase adu">+</button></div>
+        <div class="ctrl-range"><span>10</span><span>10,000 units/day</span></div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-header"><span class="ctrl-label">Lead Time</span><span class="ctrl-value" id="v-lt">90 days</span></div>
+        <div class="slider-row"><button class="adj-btn" onclick="adjustSlider('lt',-5)" aria-label="Decrease lt">−</button><input type="range" id="lt" min="10" max="190" value="90" step="5"><button class="adj-btn" onclick="adjustSlider('lt',5)" aria-label="Increase lt">+</button></div>
+        <div class="ctrl-range"><span>10</span><span>190 days</span></div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-header"><span class="ctrl-label">Safety Stock Buffer</span><span class="ctrl-value" id="v-ss">14 days</span></div>
+        <div class="slider-row"><button class="adj-btn" onclick="adjustSlider('ss',-1)" aria-label="Decrease ss">−</button><input type="range" id="ss" min="0" max="60" value="14" step="1"><button class="adj-btn" onclick="adjustSlider('ss',1)" aria-label="Increase ss">+</button></div>
+        <div class="ctrl-range"><span>0</span><span>60 days</span></div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-header"><span class="ctrl-label">Maximum Coverage Target</span><span class="ctrl-value" id="v-mc">150 days</span></div>
+        <div class="slider-row"><button class="adj-btn" onclick="adjustSlider('mc',-5)" aria-label="Decrease mc">−</button><input type="range" id="mc" min="30" max="365" value="150" step="5"><button class="adj-btn" onclick="adjustSlider('mc',5)" aria-label="Increase mc">+</button></div>
+        <div class="ctrl-range"><span>30</span><span>365 days</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Calculated Parameters</div>
+    <div class="stats-row">
+      <div class="stat"><div class="stat-label">Reorder Point</div><div class="stat-val" id="s-rop">—</div></div>
+      <div class="stat"><div class="stat-label">Max Inventory</div><div class="stat-val" id="s-max">—</div></div>
+      <div class="stat"><div class="stat-label">Safety Stock Qty</div><div class="stat-val" id="s-ss">—</div></div>
+      <div class="stat"><div class="stat-label">Typical Order Qty</div><div class="stat-val" id="s-oq">—</div></div>
+      <div class="stat"><div class="stat-label">Cycle Length</div><div class="stat-val" id="s-cl">—</div></div>
+    </div>
+    <div class="insight" id="insight"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Test Against Your Planning Worksheet</div>
+    <p style="font-size:13px;color:#5a6e82;margin-bottom:14px;">Enter item data from your inventory or planning system. If pipeline is entered, add expected delivery days so the tool can determine whether that supply covers the current lead time window.</p>
+
+    <div class="validation-grid">
+      <div class="field">
+        <label>Item No.</label>
+        <input type="text" id="f-item" placeholder="e.g. 1760.005">
+        <span class="hint">From your inventory data</span>
+      </div>
+      <div class="field">
+        <label>Item ADU (units/day)</label>
+        <input type="number" id="f-adu" placeholder="e.g. 4258.33" min="0" step="0.01">
+        <span class="hint">From your inventory dataDU</span>
+      </div>
+      <div class="field">
+        <label>On Hand Qty</label>
+        <input type="number" id="f-onhand" placeholder="e.g. 734000" min="0" step="1">
+        <span class="hint">From your inventory data</span>
+      </div>
+    </div>
+
+    <div class="validation-row2">
+      <div class="field">
+        <label>Pipeline Qty <span style="font-weight:400;color:#8fa3b8">(optional)</span></label>
+        <input type="number" id="f-pipeline" placeholder="e.g. 24000" min="0" step="1" oninput="toggleDeliveryHint()">
+        <span class="hint">On water + open orders</span>
+      </div>
+      <div class="field" id="delivery-field">
+        <label>Pipeline delivery <span style="font-weight:400;color:#8fa3b8">(days from today)</span></label>
+        <input type="number" id="f-delivery" placeholder="e.g. 45" min="1" step="1">
+        <span class="hint warn" id="delivery-hint" style="display:none">⚠ Required when pipeline is entered</span>
+        <span class="hint" id="delivery-hint-normal">When does this supply arrive?</span>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-validate" onclick="validateItem()">Plot Item</button>
+          <button class="btn-clear" onclick="clearItem()">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipeline-note" id="pipeline-note"></div>
+    <div class="verdict" id="verdict">
+      <div class="verdict-title" id="v-title"></div>
+      <div id="v-body"></div>
+      <div class="verdict-detail" id="v-detail"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Replenishment Cycle Visualization</div>
+    <div id="item-badge-wrap"></div>
+    <div class="legend">
+      <span class="li"><span style="display:inline-block;width:22px;height:2px;background:#185FA5"></span>Inventory level</span>
+      <span class="li"><span style="display:inline-block;width:22px;height:0;border-top:2px dashed #c0392b"></span>Reorder point</span>
+      <span class="li"><span style="display:inline-block;width:22px;height:0;border-top:2px dashed #27ae60"></span>Max inventory</span>
+      <span class="li"><span style="display:inline-block;width:22px;height:0;border-top:2px dotted #e67e22"></span>Safety stock</span>
+      <span class="li"><span style="display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #c0392b"></span>Order placed</span>
+      <span class="li" id="legend-item" style="display:none"><span style="display:inline-block;width:14px;height:14px;background:#8e44ad;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>On hand position</span>
+      <span class="li" id="legend-pipeline" style="display:none"><span style="display:inline-block;width:14px;height:14px;background:#16a085;border-radius:3px;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>On hand + pipeline</span>
+      <span class="li" id="legend-excess" style="display:none"><span style="display:inline-block;width:14px;height:10px;background:rgba(192,57,43,0.18);border:1px solid rgba(192,57,43,0.4);border-radius:2px"></span>Excess Coverage</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="ch" aria-label="Sawtooth inventory replenishment chart with optional real item position overlay."></canvas>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <div>Built to support supply chain planning conversations — feel free to share with your team.</div>
+  <div style="margin-top:6px">Developed by Ron Jones &nbsp;·&nbsp; <a href="https://www.linkedin.com/in/ronjones4133/" target="_blank" rel="noopener">Connect on LinkedIn</a></div>
+</footer>
+
+<script>
+let chart = null;
+let itemOverlay = null;
+
+function fmt(n) {
+  if (n >= 1000000) return (n/1000000).toFixed(2).replace(/\.?0+$/,'') + 'M';
+  if (n >= 1000)    return (n/1000).toFixed(1).replace(/\.?0+$/,'') + 'K';
+  return Math.round(n).toLocaleString();
+}
+
+function toggleDeliveryHint() {
+  const hasPipeline = parseFloat(document.getElementById('f-pipeline').value) > 0;
+  document.getElementById('delivery-hint').style.display = hasPipeline ? 'block' : 'none';
+  document.getElementById('delivery-hint-normal').style.display = hasPipeline ? 'none' : 'block';
+}
+
+function simulate(adu, lt, ssDays, maxDays) {
+  const rop    = Math.round(adu * (lt + ssDays));
+  const maxInv = Math.round(adu * maxDays);
+  const ssQty  = Math.round(adu * ssDays);
+  const DAYS   = lt * 6 + 30;
+  let inv = maxInv;
+  const invData = [], orderPts = [];
+  let pending = null;
+  for (let d = 0; d <= DAYS; d++) {
+    if (pending && pending.due <= d) { inv = Math.min(maxInv, inv + pending.qty); pending = null; }
+    invData.push({ x: d, y: Math.max(0, Math.round(inv)) });
+    if (!pending) {
+      const projAtArrival = inv - adu * lt;
+      const qty = Math.round(maxInv - Math.max(0, projAtArrival));
+      if (qty > 0) { pending = { due: d + lt, qty }; orderPts.push({ x: d, y: Math.max(0, Math.round(inv)) }); }
+    }
+    inv -= adu;
+  }
+  const valleyInv = Math.max(0, maxInv - adu * lt);
+  return { invData, orderPts, rop, maxInv, ssQty, typicalOrderQty: maxInv - valleyInv, cycleDays: lt, DAYS };
+}
+
+function buildInsight(adu, lt, ss, mc, rop, maxInv, ssQty, oq) {
+  const bandDays = mc - (lt + ss);
+  const valley = Math.max(0, maxInv - adu * lt);
+  const bufferAboveSS = valley - ssQty;
+  const ordersPerYear = Math.round(365 / lt);
+  if (bandDays <= 0) {
+    document.getElementById('insight').innerHTML = `⚠️ <strong>Parameter conflict:</strong> Max coverage (${mc}d) must exceed Lead Time + Safety Stock (${lt+ss}d). Increase max coverage or reduce other parameters.`;
+    return;
+  }
+  const bufferNote = bufferAboveSS > 0
+    ? `Valley sits <strong>${fmt(bufferAboveSS)} units</strong> above safety stock — good buffer.`
+    : `⚠️ Valley is below safety stock — consider increasing max coverage.`;
+  document.getElementById('insight').innerHTML =
+    `Reorder fires at <strong>${fmt(rop)} units</strong> (${lt+ss} days of demand), leaving a <strong>${bandDays}-day band</strong> before the ceiling. Orders of ~<strong>${fmt(oq)} units</strong> every <strong>${lt} days</strong> (~${ordersPerYear}/year). ${bufferNote}`;
+}
+
+function validateItem() {
+  const itemNo      = document.getElementById('f-item').value.trim();
+  const itemAdu     = parseFloat(document.getElementById('f-adu').value);
+  const onHand      = parseFloat(document.getElementById('f-onhand').value);
+  const pipeline    = parseFloat(document.getElementById('f-pipeline').value) || 0;
+  const deliveryDays = parseFloat(document.getElementById('f-delivery').value) || null;
+
+  if (!itemNo || isNaN(itemAdu) || isNaN(onHand)) {
+    alert('Please enter Item No., ADU, and On Hand Qty at minimum.');
+    return;
+  }
+  if (pipeline > 0 && !deliveryDays) {
+    document.getElementById('delivery-hint').style.display = 'block';
+    document.getElementById('delivery-hint-normal').style.display = 'none';
+    alert('Please enter the expected pipeline delivery (days from today) so the tool can determine if that supply covers the lead time window.');
+    return;
+  }
+
+  itemOverlay = { itemNo, itemAdu, onHand, pipeline, deliveryDays };
+
+  const adu = +document.getElementById('adu').value;
+  const lt  = +document.getElementById('lt').value;
+  const ss  = +document.getElementById('ss').value;
+  const rop    = Math.round(adu * (lt + ss));
+  const maxInv = Math.round(adu * +document.getElementById('mc').value);
+  const ssQty  = Math.round(adu * ss);
+
+  const verdictEl = document.getElementById('verdict');
+  const titleEl   = document.getElementById('v-title');
+  const bodyEl    = document.getElementById('v-body');
+  const detailEl  = document.getElementById('v-detail');
+  const pipelineNoteEl = document.getElementById('pipeline-note');
+
+  verdictEl.style.display = 'block';
+
+  const docOnHand = adu > 0 ? Math.round(onHand / adu) : 0;
+
+  // Pipeline timing logic
+  // If pipeline arrives BEFORE or AT lead time: it covers the current replenishment window
+  // If pipeline arrives AFTER lead time: it doesn't help THIS cycle — a new replenishment order may be needed
+  const pipelineCoversWindow = pipeline > 0 && deliveryDays && deliveryDays <= lt;
+  const pipelineMissesWindow = pipeline > 0 && deliveryDays && deliveryDays > lt;
+
+  // Projected inventory at lead time
+  // On hand depletes at ADU per day. Pipeline arrives at deliveryDays if before LT.
+  const projAtLT = pipelineCoversWindow
+    ? onHand - (itemAdu * lt) + pipeline          // pipeline arrives in time
+    : onHand - (itemAdu * lt);                    // pipeline misses window or no pipeline
+
+  const projWithPipeline = onHand + pipeline;     // combined position today (for display)
+  const docCombined = adu > 0 ? Math.round(projWithPipeline / adu) : 0;
+
+  // Show pipeline timing note
+  if (pipeline > 0) {
+    pipelineNoteEl.style.display = 'block';
+    if (pipelineCoversWindow) {
+      pipelineNoteEl.innerHTML = `✅ <strong>Pipeline arrives in ${deliveryDays} days</strong> — before your ${lt}-day lead time window closes. This supply counts toward coverage for the current cycle.`;
+      pipelineNoteEl.style.background = '#f0fff4';
+      pipelineNoteEl.style.borderColor = '#27ae60';
+      pipelineNoteEl.style.color = '#1a5c30';
+    } else {
+      pipelineNoteEl.innerHTML = `⚠️ <strong>Pipeline arrives in ${deliveryDays} days</strong> — after your ${lt}-day lead time window. This supply does NOT cover the current cycle. A new order may be needed today for delivery at day ${lt}.`;
+      pipelineNoteEl.style.background = '#fffbf0';
+      pipelineNoteEl.style.borderColor = '#e67e22';
+      pipelineNoteEl.style.color = '#7a5c00';
+    }
+  } else {
+    pipelineNoteEl.style.display = 'none';
+  }
+
+  // Verdict
+  const effectivePosition = pipelineCoversWindow ? projAtLT : onHand;
+  const detail = `<strong>Coverage Snapshot:</strong> On hand today: ${fmt(onHand)} (${docOnHand} days). ` +
+    (pipeline > 0 ? `Pipeline: ${fmt(pipeline)} units arriving day ${deliveryDays} — ${pipelineCoversWindow ? 'counts toward this cycle.' : 'arrives after lead time, does not cover this cycle.'} ` : '') +
+    `Projected inventory at lead time (day ${lt}): <strong>${fmt(Math.max(0,projAtLT))} units</strong>. Reorder point: <strong>${fmt(rop)} units</strong>.`;
+
+  if (onHand <= rop && !pipelineCoversWindow) {
+    verdictEl.className = 'verdict should-buy';
+    titleEl.textContent = '🔴 Replenishment Required — Place Order Now';
+    bodyEl.innerHTML = `<strong>${itemNo}</strong> has <strong>${fmt(onHand)} units</strong> on hand (${docOnHand} days), at or below the reorder point of <strong>${fmt(rop)} units</strong>.`
+      + (pipelineMissesWindow ? ` Pipeline of ${fmt(pipeline)} units arrives day ${deliveryDays} — after the ${lt}-day lead time window — so it does not prevent a new order.` : '')
+      + ` If your planning system is not showing a trigger, verify that the Min, Max, and Reorder Point parameters are correctly configured for this item.`;
+  } else if (onHand <= rop && pipelineCoversWindow) {
+    verdictEl.className = 'verdict borderline';
+    titleEl.textContent = '🟡 Pipeline Covers This Cycle — Monitor Closely';
+    bodyEl.innerHTML = `<strong>${itemNo}</strong> on hand (${fmt(onHand)}) is below the reorder point of <strong>${fmt(rop)} units</strong>, but pipeline of <strong>${fmt(pipeline)} units</strong> arrives in <strong>${deliveryDays} days</strong> — before the lead time window closes. `
+      + `Projected position at delivery: <strong>${fmt(Math.max(0,projAtLT))} units</strong>. `
+      + (projAtLT > rop ? `This clears the reorder point — no replenishment trigger needed.` : `Even with pipeline, projected position is still below ROP. A new order may still be warranted.`);
+  } else if (projAtLT <= rop) {
+    verdictEl.className = 'verdict borderline';
+    titleEl.textContent = '🟡 Order Expected Soon — Verify Pipeline';
+    bodyEl.innerHTML = `<strong>${itemNo}</strong> has <strong>${fmt(onHand)} units</strong> on hand today (above ROP), but projected inventory at day ${lt} would be <strong>${fmt(Math.max(0,projAtLT))} units</strong> — at or below the reorder point of <strong>${fmt(rop)} units</strong>. A buy trigger should fire soon if it hasn't already.`;
+  } else {
+    verdictEl.className = 'verdict no-buy';
+    titleEl.textContent = '🟢 No Replenishment Needed — Push Out or Cancel if Possible';
+    bodyEl.innerHTML = `<strong>${itemNo}</strong> has <strong>${fmt(onHand)} units</strong> on hand (${docOnHand} days). `
+      + (pipelineCoversWindow ? `Pipeline of ${fmt(pipeline)} units arrives day ${deliveryDays} (within lead time window). ` : '')
+      + `Projected inventory at day ${lt}: <strong>${fmt(Math.max(0,projAtLT))} units</strong> — above the reorder point of <strong>${fmt(rop)} units</strong>. `
+      + `If the team still believes more stock is needed, revisit whether the ADU or max coverage parameters accurately reflect current demand. Otherwise, look to push out or cancel any open orders within the lead time window.`;
+  }
+
+  detailEl.innerHTML = detail;
+
+  // Badge
+  document.getElementById('item-badge-wrap').innerHTML =
+    `<div class="item-badge"><span>📦 ${itemNo}</span><span style="opacity:.7;font-weight:400">ADU: ${fmt(itemAdu)}/day · On Hand: ${fmt(onHand)}${pipeline > 0 ? ' · Pipeline: '+fmt(pipeline)+' (day '+deliveryDays+')' : ''}</span></div>`;
+  document.getElementById('legend-item').style.display = 'flex';
+  document.getElementById('legend-pipeline').style.display = pipeline > 0 ? 'flex' : 'none';
+
+  draw();
+}
+
+function clearItem() {
+  itemOverlay = null;
+  ['f-item','f-adu','f-onhand','f-pipeline','f-delivery'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('verdict').style.display = 'none';
+  document.getElementById('pipeline-note').style.display = 'none';
+  document.getElementById('item-badge-wrap').innerHTML = '';
+  document.getElementById('legend-item').style.display = 'none';
+  document.getElementById('legend-pipeline').style.display = 'none';
+  document.getElementById('legend-excess').style.display = 'none';
+  document.getElementById('delivery-hint').style.display = 'none';
+  document.getElementById('delivery-hint-normal').style.display = 'block';
+  draw();
+}
+
+function draw() {
+  const adu = +document.getElementById('adu').value;
+  const lt  = +document.getElementById('lt').value;
+  const ss  = +document.getElementById('ss').value;
+  const mc  = +document.getElementById('mc').value;
+
+  document.getElementById('v-adu').textContent = adu.toLocaleString() + ' units';
+  document.getElementById('v-lt').textContent  = lt + ' days';
+  document.getElementById('v-ss').textContent  = ss + ' days';
+  document.getElementById('v-mc').textContent  = mc + ' days';
+
+  const { invData, orderPts, rop, maxInv, ssQty, typicalOrderQty, cycleDays, DAYS }
+    = simulate(adu, lt, ss, mc);
+
+  document.getElementById('s-rop').textContent = fmt(rop);
+  document.getElementById('s-max').textContent = fmt(maxInv);
+  document.getElementById('s-ss').textContent  = fmt(ssQty);
+  document.getElementById('s-oq').textContent  = fmt(typicalOrderQty);
+  document.getElementById('s-cl').textContent  = cycleDays + ' days';
+
+  buildInsight(adu, lt, ss, mc, rop, maxInv, ssQty, typicalOrderQty);
+
+  const ropLine = Array.from({length:DAYS+1},(_,i)=>({x:i,y:rop}));
+  const maxLine = Array.from({length:DAYS+1},(_,i)=>({x:i,y:maxInv}));
+  const ssLine  = Array.from({length:DAYS+1},(_,i)=>({x:i,y:ssQty}));
+  const step    = Math.ceil(DAYS / 8 / 30) * 30;
+
+  const datasets = [
+    { label:'Inventory level', data:invData, borderColor:'#185FA5', backgroundColor:'rgba(24,95,165,0.08)', borderWidth:2.5, pointRadius:0, fill:true, tension:0, parsing:false, order:2 },
+    { label:'Reorder point',   data:ropLine, borderColor:'#c0392b', borderWidth:1.5, borderDash:[7,4], pointRadius:0, fill:false, parsing:false, order:3 },
+    { label:'Max inventory',   data:maxLine, borderColor:'#27ae60', borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false, parsing:false, order:4 },
+    { label:'Safety stock',    data:ssLine,  borderColor:'#e67e22', borderWidth:1.5, borderDash:[2,3], pointRadius:0, fill:false, parsing:false, order:5 },
+    { label:'Order placed',    data:orderPts, borderColor:'#c0392b', backgroundColor:'#c0392b', pointRadius:6, pointStyle:'triangle', showLine:false, parsing:false, order:1 }
+  ];
+
+  let yMax = undefined;
+  if (itemOverlay) {
+    const { onHand, pipeline, deliveryDays } = itemOverlay;
+    const onHandLine = Array.from({length:DAYS+1},(_,i)=>({x:i,y:onHand}));
+    datasets.push({ label:'On hand level', data:onHandLine, borderColor:'#8e44ad', borderWidth:2, borderDash:[3,3], pointRadius:0, fill:false, parsing:false, order:0 });
+    datasets.push({ label:'On hand position', data:[{x:0,y:onHand}], borderColor:'#8e44ad', backgroundColor:'#8e44ad', pointRadius:8, pointStyle:'circle', showLine:false, parsing:false, order:0 });
+
+    if (pipeline > 0) {
+      const combined = onHand + pipeline;
+      // Show pipeline as arriving at deliveryDays on the chart
+      // Only project pipeline through the lead time window — beyond that the sawtooth takes over
+      const pipelineData = [];
+      const invAtDelivery = Math.max(0, onHand - (itemOverlay.itemAdu * deliveryDays));
+      const invAfterDelivery = invAtDelivery + pipeline;
+      const showUntil = lt; // clip at lead time — only the coverage window matters
+      for (let d = 0; d <= showUntil; d++) {
+        let y;
+        if (d < deliveryDays) {
+          y = Math.max(0, onHand - (itemOverlay.itemAdu * d));
+        } else {
+          y = Math.max(0, invAfterDelivery - (itemOverlay.itemAdu * (d - deliveryDays)));
+        }
+        pipelineData.push({ x: d, y: Math.round(y) });
+      }
+      datasets.push({ label:'Projected with pipeline', data:pipelineData, borderColor:'#16a085', borderWidth:2, borderDash:[4,2], pointRadius:0, fill:false, parsing:false, order:0 });
+      datasets.push({ label:'Pipeline arrives', data:[{x:deliveryDays,y:Math.max(0,onHand - itemOverlay.itemAdu * deliveryDays + pipeline)}], borderColor:'#16a085', backgroundColor:'#16a085', pointRadius:8, pointStyle:'rect', showLine:false, parsing:false, order:0 });
+      yMax = Math.max(maxInv * 1.05, combined * 1.05);
+
+      // Excess Coverage zone — shaded area above maxInv, only during pipeline window
+      // Show from day 0 to the day combined position drains back to maxInv
+      const daysUntilBelowMax = Math.ceil((combined - maxInv) / itemOverlay.itemAdu);
+      const excessEndDay = Math.min(Math.max(0, daysUntilBelowMax), showUntil);
+      if (combined > maxInv && excessEndDay > 0) {
+        const excessData = [];
+        for (let d = 0; d <= excessEndDay; d++) {
+          let projY;
+          if (d < deliveryDays) {
+            projY = Math.max(0, onHand - (itemOverlay.itemAdu * d));
+          } else {
+            projY = Math.max(0, invAfterDelivery - (itemOverlay.itemAdu * (d - deliveryDays)));
+          }
+          // Only shade what's above maxInv
+          excessData.push({ x: d, y: Math.max(maxInv, Math.round(projY)) });
+        }
+        // Base line at maxInv for the fill
+        const excessBase = [];
+        for (let d = 0; d <= excessEndDay; d++) {
+          excessBase.push({ x: d, y: maxInv });
+        }
+        datasets.push({
+          label: 'Excess Coverage',
+          data: excessData,
+          borderColor: 'rgba(192,57,43,0.0)',
+          backgroundColor: 'rgba(192,57,43,0.15)',
+          borderWidth: 0,
+          pointRadius: 0,
+          fill: '+1',
+          tension: 0,
+          parsing: false,
+          order: 0
+        });
+        datasets.push({
+          label: 'Excess Coverage Base',
+          data: excessBase,
+          borderColor: 'rgba(192,57,43,0.35)',
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderDash: [3,2],
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+          parsing: false,
+          order: 0
+        });
+        document.getElementById('legend-excess').style.display = 'flex';
+      } else {
+        document.getElementById('legend-excess').style.display = 'none';
+      }
+    } else {
+      yMax = Math.max(maxInv * 1.05, onHand * 1.05);
+    }
+  }
+
+  if (chart) chart.destroy();
+
+  chart = new Chart(document.getElementById('ch'), {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      animation:{ duration:200 },
+      plugins: {
+        legend:{ display:false },
+        tooltip:{
+          mode:'index', intersect:false,
+          backgroundColor:'rgba(26,37,53,0.92)', titleColor:'#a8c4e0', bodyColor:'#e8f0f8', padding:10,
+          filter: ctx => !['On hand position','Pipeline arrives'].includes(ctx.dataset.label),
+          callbacks:{ label: ctx => { if(ctx.dataset.label==='Order placed') return '▲ Order placed — day '+ctx.parsed.x; return ctx.dataset.label+': '+Math.round(ctx.parsed.y).toLocaleString(); } }
+        }
+      },
+      scales:{
+        x:{ type:'linear', min:0, max:DAYS, title:{display:true,text:'Days',color:'#5a6e82',font:{size:12}}, ticks:{color:'#5a6e82',stepSize:step,autoSkip:false,callback:v=>Number.isInteger(v/step)?v:null}, grid:{color:'rgba(0,0,0,0.06)'} },
+        y:{ min:0, max:yMax, title:{display:true,text:'Units on hand',color:'#5a6e82',font:{size:12}}, ticks:{color:'#5a6e82',callback:v=>{ if(v>=1000000) return (v/1000000).toFixed(1)+'M'; if(v>=1000) return (v/1000).toFixed(0)+'K'; return v; }}, grid:{color:'rgba(0,0,0,0.06)'} }
+      }
+    }
+  });
+}
+
+function adjustSlider(id, delta) {
+  const el = document.getElementById(id);
+  const newVal = Math.min(+el.max, Math.max(+el.min, +el.value + delta));
+  el.value = newVal;
+  draw();
+  // If item is loaded, re-validate
+  if (itemOverlay) validateItem();
+}
+
+['adu','lt','ss','mc'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>
