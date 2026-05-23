@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -198,7 +199,7 @@
       <div class="field">
         <label>Pipeline Qty <span style="font-weight:400;color:#8fa3b8">(optional)</span></label>
         <input type="number" id="f-pipeline" placeholder="e.g. 24000" min="0" step="1" oninput="toggleDeliveryHint()">
-        <span class="hint">On water + open orders</span>
+        <span class="hint">In transit + open orders</span>
       </div>
       <div class="field" id="delivery-field">
         <label>Pipeline delivery <span style="font-weight:400;color:#8fa3b8">(days from today)</span></label>
@@ -271,7 +272,7 @@ function simulate(adu, lt, ssDays, maxDays) {
   const rop    = Math.round(adu * (lt + ssDays));
   const maxInv = Math.round(adu * maxDays);
   const ssQty  = Math.round(adu * ssDays);
-  const DAYS   = lt * 6 + 30;
+  const DAYS   = lt * 3 + 30;
   let inv = maxInv;
   const invData = [], orderPts = [];
   let pending = null;
