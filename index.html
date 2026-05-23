@@ -59,6 +59,9 @@
   .verdict.no-buy     .verdict-title { color: #27ae60; }
   .verdict.borderline .verdict-title { color: #e67e22; }
   .verdict-detail { font-size: 12.5px; color: #5a6e82; margin-top: 8px; border-top: 1px solid rgba(0,0,0,0.07); padding-top: 8px; }
+  .ss-alert { margin-top: 10px; border-radius: 8px; padding: 12px 16px; background: #fff0f0; border-left: 4px solid #c0392b; border-top: 2px solid #c0392b; display: none; }
+  .ss-alert-title { font-weight: 700; font-size: 14px; color: #c0392b; margin-bottom: 4px; }
+  .ss-alert-body { font-size: 13px; color: #5a6e82; line-height: 1.6; }
 
   .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; font-size: 12px; color: #5a6e82; }
   .li { display: flex; align-items: center; gap: 6px; }
@@ -159,8 +162,19 @@
       </div>
       <div class="field">
         <label>Item ADU (units/day)</label>
-        <input type="number" id="f-adu" placeholder="e.g. 4258.33" min="0" step="0.01">
-        <span class="hint">From your inventory data</span>
+        <input type="number" id="f-adu" placeholder="e.g. 4258.33" min="0" step="0.01"
+               oninput="onAduManualEdit()">
+        <span class="hint" id="adu-hint">From your inventory data</span>
+      </div>
+      <div class="field">
+        <label>ADU Adjustment <span style="font-weight:400;color:#8fa3b8" id="adj-pct-label">(0%)</span></label>
+        <div class="slider-row">
+          <button class="adj-btn" onclick="adjustAduPct(-5)">−</button>
+          <input type="range" id="adu-adj" min="-50" max="100" value="0" step="5"
+                 oninput="onAduAdjSlider()">
+          <button class="adj-btn" onclick="adjustAduPct(5)">+</button>
+        </div>
+        <div class="ctrl-range"><span>−50%</span><span style="color:#27ae60;font-weight:600" id="adj-adu-display"></span><span>+100%</span></div>
       </div>
       <div class="field">
         <label>On Hand Qty</label>
@@ -173,7 +187,7 @@
       <div class="field">
         <label>Pipeline Qty <span style="font-weight:400;color:#8fa3b8">(optional)</span></label>
         <input type="number" id="f-pipeline" placeholder="e.g. 24000" min="0" step="1" oninput="toggleDeliveryHint()">
-        <span class="hint">On water + open orders</span>
+        <span class="hint">In transit + open orders</span>
       </div>
       <div class="field" id="delivery-field">
         <label>Pipeline delivery <span style="font-weight:400;color:#8fa3b8">(days from today)</span></label>
@@ -195,6 +209,10 @@
       <div class="verdict-title" id="v-title"></div>
       <div id="v-body"></div>
       <div class="verdict-detail" id="v-detail"></div>
+    </div>
+    <div class="ss-alert" id="ss-alert">
+      <div class="ss-alert-title" id="ss-alert-title"></div>
+      <div class="ss-alert-body" id="ss-alert-body"></div>
     </div>
   </div>
 
@@ -243,7 +261,7 @@ function simulate(adu, lt, ssDays, maxDays) {
   const rop    = Math.round(adu * (lt + ssDays));
   const maxInv = Math.round(adu * maxDays);
   const ssQty  = Math.round(adu * ssDays);
-  const DAYS   = lt * 6 + 30;
+  const DAYS   = lt * 3 + 30;
   let inv = maxInv;
   const invData = [], orderPts = [];
   let pending = null;
@@ -330,13 +348,24 @@ function validateItem() {
   const docCombined = adu > 0 ? Math.round(projWithPipeline / adu) : 0;
 
   // Show pipeline timing note
+  // Check if projected position is below safety stock
+  const projectedBelowSS = Math.max(0, projAtLT) < ssQty;
+
   if (pipeline > 0) {
     pipelineNoteEl.style.display = 'block';
     if (pipelineCoversWindow) {
-      pipelineNoteEl.innerHTML = `✅ <strong>Pipeline arrives in ${deliveryDays} days</strong> — before your ${lt}-day lead time window closes. This supply counts toward coverage for the current cycle.`;
-      pipelineNoteEl.style.background = '#f0fff4';
-      pipelineNoteEl.style.borderColor = '#27ae60';
-      pipelineNoteEl.style.color = '#1a5c30';
+      if (projectedBelowSS) {
+        // Amber — timing OK but quantity insufficient to clear safety stock
+        pipelineNoteEl.innerHTML = `⚠️ <strong>Pipeline arrives in ${deliveryDays} days</strong> — before your ${lt}-day lead time window closes, but projected position remains below safety stock. Quantity is insufficient to restore coverage.`;
+        pipelineNoteEl.style.background = '#fffbf0';
+        pipelineNoteEl.style.borderColor = '#e67e22';
+        pipelineNoteEl.style.color = '#7a5c00';
+      } else {
+        pipelineNoteEl.innerHTML = `✅ <strong>Pipeline arrives in ${deliveryDays} days</strong> — before your ${lt}-day lead time window closes. This supply counts toward coverage for the current cycle.`;
+        pipelineNoteEl.style.background = '#f0fff4';
+        pipelineNoteEl.style.borderColor = '#27ae60';
+        pipelineNoteEl.style.color = '#1a5c30';
+      }
     } else {
       pipelineNoteEl.innerHTML = `⚠️ <strong>Pipeline arrives in ${deliveryDays} days</strong> — after your ${lt}-day lead time window. This supply does NOT cover the current cycle. A new order may be needed today for delivery at day ${lt}.`;
       pipelineNoteEl.style.background = '#fffbf0';
@@ -380,6 +409,30 @@ function validateItem() {
 
   detailEl.innerHTML = detail;
 
+  // Safety stock alert
+  const ssAlertEl      = document.getElementById('ss-alert');
+  const ssAlertTitleEl = document.getElementById('ss-alert-title');
+  const ssAlertBodyEl  = document.getElementById('ss-alert-body');
+
+  const currentBelowSS  = onHand < ssQty;
+  const projBelowSS     = Math.max(0, projAtLT) < ssQty;
+
+  if (currentBelowSS || projBelowSS) {
+    ssAlertEl.style.display = 'block';
+    if (currentBelowSS && projBelowSS) {
+      ssAlertTitleEl.textContent = '🚨 Below Safety Stock — Expedite Replenishment';
+      ssAlertBodyEl.innerHTML = `On hand of <strong>${fmt(onHand)} units</strong> is already below the safety stock threshold of <strong>${fmt(ssQty)} units</strong>. Pipeline supply is insufficient to restore coverage — projected position at day ${lt} remains at <strong>${fmt(Math.max(0,projAtLT))} units</strong>. Contact your supplier to expedite or source alternative supply immediately.`;
+    } else if (currentBelowSS) {
+      ssAlertTitleEl.textContent = '🚨 Currently Below Safety Stock';
+      ssAlertBodyEl.innerHTML = `On hand of <strong>${fmt(onHand)} units</strong> is below safety stock of <strong>${fmt(ssQty)} units</strong>. Pipeline supply is expected to restore coverage by day ${lt}. Monitor closely and confirm pipeline delivery timing.`;
+    } else {
+      ssAlertTitleEl.textContent = '⚠️ Projected to Drop Below Safety Stock';
+      ssAlertBodyEl.innerHTML = `On hand is currently above safety stock, but projected inventory at day ${lt} of <strong>${fmt(Math.max(0,projAtLT))} units</strong> will fall below the safety stock threshold of <strong>${fmt(ssQty)} units</strong>. Consider expediting or supplementing the pipeline order.`;
+    }
+  } else {
+    ssAlertEl.style.display = 'none';
+  }
+
   // Badge
   document.getElementById('item-badge-wrap').innerHTML =
     `<div class="item-badge"><span>📦 ${itemNo}</span><span style="opacity:.7;font-weight:400">ADU: ${fmt(itemAdu)}/day · On Hand: ${fmt(onHand)}${pipeline > 0 ? ' · Pipeline: '+fmt(pipeline)+' (day '+deliveryDays+')' : ''}</span></div>`;
@@ -398,8 +451,16 @@ function clearItem() {
   document.getElementById('legend-item').style.display = 'none';
   document.getElementById('legend-pipeline').style.display = 'none';
   document.getElementById('legend-excess').style.display = 'none';
+  document.getElementById('ss-alert').style.display = 'none';
   document.getElementById('delivery-hint').style.display = 'none';
   document.getElementById('delivery-hint-normal').style.display = 'block';
+  // Reset ADU adjuster
+  baseAdu = null;
+  document.getElementById('adu-adj').value = 0;
+  document.getElementById('adj-pct-label').textContent = '(0%)';
+  document.getElementById('adj-adu-display').textContent = '';
+  document.getElementById('f-adu').style.background = '';
+  document.getElementById('adu-hint').textContent = 'From your inventory data';
   draw();
 }
 
@@ -551,6 +612,53 @@ function adjustSlider(id, delta) {
   const newVal = Math.min(+el.max, Math.max(+el.min, +el.value + delta));
   el.value = newVal;
   draw();
+}
+
+let baseAdu = null; // stores original ADU for % calculations
+
+function syncAduSlider(aduVal) {
+  const slider = document.getElementById('adu');
+  const step   = parseInt(slider.step) || 10;
+  const snapped = Math.min(+slider.max, Math.max(+slider.min, Math.round(aduVal / step) * step));
+  slider.value = snapped;
+  document.getElementById('v-adu').textContent = snapped.toLocaleString() + ' units';
+  draw();
+}
+
+function onAduAdjSlider() {
+  if (baseAdu === null) return;
+  const pct     = parseInt(document.getElementById('adu-adj').value);
+  const adjAdu  = baseAdu * (1 + pct / 100);
+  const adjRounded = Math.round(adjAdu * 100) / 100;
+
+  document.getElementById('f-adu').value = adjRounded.toFixed(2);
+  document.getElementById('adj-pct-label').textContent = `(${pct > 0 ? '+' : ''}${pct}%)`;
+  document.getElementById('f-adu').style.background = pct > 0 ? '#f0fff4' : pct < 0 ? '#fff5f5' : '#f5f9fe';
+
+  const diff = adjRounded - baseAdu;
+  document.getElementById('adj-adu-display').textContent =
+    adjRounded.toLocaleString(undefined, {maximumFractionDigits:1}) + '/day' +
+    (pct !== 0 ? ` (${diff > 0 ? '+' : ''}${Math.round(diff)}/day vs baseline)` : '');
+
+  syncAduSlider(adjRounded);
+}
+
+function adjustAduPct(delta) {
+  const slider = document.getElementById('adu-adj');
+  slider.value = Math.min(+slider.max, Math.max(+slider.min, +slider.value + delta));
+  onAduAdjSlider();
+}
+
+function onAduManualEdit() {
+  const val = parseFloat(document.getElementById('f-adu').value);
+  if (isNaN(val) || val <= 0) return;
+  baseAdu = val;
+  document.getElementById('adu-adj').value = 0;
+  document.getElementById('adj-pct-label').textContent = '(0%)';
+  document.getElementById('adj-adu-display').textContent = '';
+  document.getElementById('f-adu').style.background = '#fff8e8';
+  document.getElementById('adu-hint').textContent = 'Custom ADU — % adjuster reset to baseline';
+  syncAduSlider(val);
 }
 
 ['adu','lt','ss','mc'].forEach(id => document.getElementById(id).addEventListener('input', draw));
