@@ -1,0 +1,627 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vision Industries – Customer Receiving Label Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e}
+
+/* ── attribution strip ── */
+.attrib-strip{
+  background:#0d0d1f;color:#8888aa;font-size:0.72rem;
+  padding:5px 20px;display:flex;align-items:center;gap:6px;justify-content:center;
+  letter-spacing:0.04em;
+}
+.attrib-strip a{color:#7a9cf5;text-decoration:none}
+.attrib-strip a:hover{text-decoration:underline}
+
+.app-header{background:#1a1a2e;color:#fff;padding:16px 32px;display:flex;align-items:center}
+.app-header h1{font-size:1.1rem;font-weight:600;letter-spacing:0.02em}
+
+.setup-panel{max-width:800px;margin:28px auto;padding:0 20px}
+.card{background:#fff;border-radius:8px;padding:24px 28px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:18px}
+.card h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:16px}
+
+.field-row{display:flex;gap:14px;margin-bottom:12px;align-items:flex-end}
+.field-row label{display:flex;flex-direction:column;gap:4px;flex:1}
+.field-row label span{font-size:.76rem;font-weight:600;color:#555}
+.field-row input,.field-row textarea,.field-row select{
+  border:1.5px solid #dde0e8;border-radius:5px;padding:8px 11px;
+  font-size:.88rem;font-family:inherit;transition:border-color .15s;resize:none
+}
+.field-row input:focus,.field-row textarea:focus,.field-row select:focus{outline:none;border-color:#1a1a2e}
+
+/* customer search */
+.cust-search-wrap{position:relative}
+.cust-dropdown{
+  position:absolute;top:100%;left:0;right:0;background:#fff;
+  border:1.5px solid #1a1a2e;border-top:none;border-radius:0 0 5px 5px;
+  max-height:220px;overflow-y:auto;z-index:200;display:none;
+  box-shadow:0 4px 12px rgba(0,0,0,.12)
+}
+.cust-dropdown.open{display:block}
+.cust-option{padding:8px 12px;cursor:pointer;font-size:.82rem;border-bottom:1px solid #f0f0f0}
+.cust-option:hover,.cust-option.active{background:#eef2ff}
+.cust-option .cust-no{color:#888;font-size:.75rem;margin-left:6px}
+
+.upload-zone{
+  border:2px dashed #c8cdd8;border-radius:6px;padding:22px;text-align:center;
+  cursor:pointer;transition:all .2s;background:#fafbfd
+}
+.upload-zone:hover,.upload-zone.drag-over{border-color:#1a1a2e;background:#f0f2f5}
+.upload-zone .icon{font-size:1.7rem;margin-bottom:6px}
+.upload-zone p{font-size:.86rem;color:#666}
+.upload-zone strong{color:#1a1a2e}
+#file-input,#uom-input{display:none}
+
+.status-bar{font-size:.8rem;padding:9px 13px;border-radius:5px;margin-top:10px;display:none}
+.status-bar.info{background:#e8f0fe;color:#1a56db;display:block}
+.status-bar.success{background:#e3f9e5;color:#1a7f37;display:block}
+.status-bar.error{background:#fde8e8;color:#c0392b;display:block}
+
+.items-table{width:100%;border-collapse:collapse;font-size:.81rem;margin-top:4px}
+.items-table th{background:#f5f6f8;padding:7px 9px;text-align:left;font-weight:600;color:#555;font-size:.73rem;text-transform:uppercase;letter-spacing:.05em}
+.items-table td{padding:7px 9px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+.items-table tr:last-child td{border-bottom:none}
+.badge{background:#1a1a2e;color:#fff;border-radius:10px;padding:2px 8px;font-size:.7rem;font-weight:600}
+.badge.warn{background:#f59e0b}
+
+/* editable carton qty */
+.ctn-input{
+  width:70px;padding:3px 6px;border:1.5px solid #dde0e8;border-radius:4px;
+  font-size:.82rem;text-align:center;font-family:inherit
+}
+.ctn-input:focus{outline:none;border-color:#1a1a2e}
+
+.btn-generate{
+  display:block;width:100%;padding:13px;background:#1a1a2e;color:#fff;
+  border:none;border-radius:6px;font-size:.95rem;font-weight:600;cursor:pointer;
+  letter-spacing:.03em;transition:background .15s;margin-top:4px
+}
+.btn-generate:hover{background:#2d2d4e}
+.btn-generate:disabled{background:#ccc;cursor:not-allowed}
+
+/* print bar */
+@media screen{
+  #labels-container{max-width:920px;margin:0 auto 48px;padding:0 20px}
+  .label-group-header{font-size:.73rem;text-transform:uppercase;letter-spacing:.08em;color:#888;padding:10px 0 5px;border-top:1px solid #dde0e8;margin-top:18px}
+  .label-wrapper{display:inline-block;margin:7px;vertical-align:top}
+  .print-bar{
+    background:#fff;border-bottom:1px solid #dde0e8;padding:10px 28px;
+    display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100;
+    box-shadow:0 2px 6px rgba(0,0,0,.06)
+  }
+  .btn-print{background:#1a7f37;color:#fff;border:none;border-radius:5px;padding:8px 20px;font-size:.88rem;font-weight:600;cursor:pointer}
+  .btn-back{background:#f0f2f5;color:#333;border:none;border-radius:5px;padding:8px 20px;font-size:.88rem;font-weight:600;cursor:pointer}
+  .label-count-info{font-size:.83rem;color:#555;margin-left:auto}
+}
+
+/* ── 4×6 label ── */
+.shipping-label{
+  width:4in;height:6in;
+  border:1.5px solid #111;
+  font-family:Arial,Helvetica,sans-serif;
+  background:#fff;
+  display:grid;
+  grid-template-rows:1in 1.65in 1.05in 1.3in;
+  overflow:hidden;
+  page-break-after:always;break-after:page;
+}
+
+/* header row */
+.lbl-header{display:grid;grid-template-columns:1fr 1fr;border-bottom:1.5px solid #111;height:1in}
+.lbl-addr{padding:7px 9px;font-size:7pt;line-height:1.5;overflow:hidden}
+.lbl-addr.right{border-left:1.5px solid #111}
+.lbl-addr-tag{font-weight:700;font-size:6.5pt;display:block;margin-bottom:2px}
+.lbl-addr-name{font-weight:700;font-size:8pt}
+
+/* part / desc row */
+.lbl-part-row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1.5px solid #111;height:1.65in}
+.lbl-cell{padding:6px 9px 5px;display:flex;flex-direction:column;overflow:hidden}
+.lbl-cell.right{border-left:1.5px solid #111;justify-content:center}
+.lbl-cell-tag{font-size:6.5pt;font-weight:600;margin-bottom:3px;color:#333;flex-shrink:0}
+.lbl-cell svg{max-width:100%;height:auto;flex-shrink:0}
+.lbl-desc-text{font-size:18pt;font-weight:700;line-height:1.2;word-break:break-word}
+
+/* qty row */
+.lbl-qty-row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1.5px solid #111;height:1.05in}
+
+/* po/vendor row */
+.lbl-po-row{display:grid;grid-template-columns:1fr 1fr;height:1.3in}
+.lbl-po-cell{padding:6px 9px 5px;display:flex;flex-direction:column;overflow:hidden}
+.lbl-po-cell.right{border-left:1.5px solid #111}
+
+
+
+/* print */
+@page {
+  size: 4in 6in;
+  margin: 0;
+}
+@media print{
+  .app-header,.setup-panel,.print-bar,.label-wrapper{display:block!important;margin:0!important;padding:0!important}
+  body{background:#fff}
+  .print-bar,.app-header,.setup-panel,.attrib-strip{display:none!important}
+  #labels-container{margin:0;padding:0;max-width:none}
+  .label-wrapper{display:block;margin:0;padding:0}
+  .shipping-label{width:4in;height:6in;border:none;page-break-after:always;break-after:page;margin:0;display:grid;grid-template-rows:1in 1.65in 1.05in 1.3in}
+  .lbl-header,.lbl-part-row,.lbl-qty-row{border-bottom:1px solid #111 !important;}
+  .lbl-addr.right,.lbl-cell.right,.lbl-po-cell.right{border-left:1px solid #111 !important;}
+  .label-group-header{display:none !important;}
+  body,html{margin:0;padding:0}
+
+}
+</style>
+</head>
+<body>
+
+<div class="attrib-strip">
+  Created by <a href="https://www.linkedin.com/in/ronjones4133/" target="_blank">Ron Jones</a>
+  &nbsp;·&nbsp; Vision Industries Group Customer Receiving Label Generator
+</div>
+
+<div id="setup-view">
+  <div class="app-header">
+    <h1>Vision Industries Group — Customer Receiving Label Generator</h1>
+  </div>
+
+  <div class="setup-panel">
+
+    <div class="card">
+      <h2>Step 1 — Order Details</h2>
+      <div class="field-row">
+        <label><span>Customer #</span>
+          <div class="cust-search-wrap">
+            <input type="text" id="cust-search" placeholder="Type customer # or name to search…" autocomplete="off">
+            <div class="cust-dropdown" id="cust-dropdown"></div>
+          </div>
+        </label>
+        <label style="flex:0 0 160px"><span>Customer PO #</span>
+          <input type="text" id="po-number" placeholder="e.g. PO-123456">
+        </label>
+      </div>
+      <div class="field-row">
+        <label><span>Ship-To Company Name</span>
+          <input type="text" id="to-name" placeholder="Auto-filled from customer lookup">
+        </label>
+      </div>
+      <div class="field-row">
+        <label><span>Ship-To Address</span>
+          <input type="text" id="to-addr1" placeholder="Street address (auto-filled)">
+        </label>
+      </div>
+      <div class="field-row">
+        <label style="flex:2"><span>City</span>
+          <input type="text" id="to-city" placeholder="City">
+        </label>
+        <label style="flex:0 0 70px"><span>State</span>
+          <input type="text" id="to-state" placeholder="ST">
+        </label>
+        <label style="flex:1"><span>ZIP</span>
+          <input type="text" id="to-zip" placeholder="ZIP">
+        </label>
+      </div>
+      <div id="multi-addr-note" style="display:none;margin-top:8px;font-size:.78rem;color:#b45309">
+        ⚠️ Multiple ship-to addresses found for this customer — please verify the address above.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Step 2 — Upload Sales Order (Lines export from BC)</h2>
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+        <div class="icon">📂</div>
+        <p><strong>Click to upload</strong> or drag & drop the SO Lines .xlsx</p>
+        <p style="margin-top:5px;font-size:.76rem">Must include: No., Item Reference No., Description, Quantity</p>
+      </div>
+      <input type="file" id="file-input" accept=".xlsx,.xls">
+      <div id="upload-status" class="status-bar"></div>
+    </div>
+
+    <div class="card">
+      <h2>Step 3 — Upload UOM Reference Table</h2>
+      <div class="upload-zone" id="uom-zone" onclick="document.getElementById('uom-input').click()">
+        <div class="icon">📦</div>
+        <p><strong>Click to upload</strong> the Item Reference & UOM Tables .xlsx</p>
+        <p style="margin-top:5px;font-size:.76rem">Sheet "Item Unit of Measure" — Item No. / Code / Qty. per Unit</p>
+      </div>
+      <input type="file" id="uom-input" accept=".xlsx,.xls">
+      <div id="uom-status" class="status-bar"></div>
+    </div>
+
+    <div class="card" id="preview-card" style="display:none">
+      <h2>Label Preview — <span id="total-label-count">0</span> labels to print
+        <span style="font-weight:400;color:#aaa;margin-left:6px;font-size:.7rem">(edit Carton Qty to recalculate)</span>
+      </h2>
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Vision Part #</th>
+            <th>Vendor Part #</th>
+            <th>Description</th>
+            <th>Total Qty</th>
+            <th>Carton Qty</th>
+            <th>Labels</th>
+          </tr>
+        </thead>
+        <tbody id="preview-body"></tbody>
+      </table>
+      <div id="missing-uom-note" style="font-size:.76rem;color:#b45309;margin-top:8px;display:none">
+        ⚠️ Items marked <span class="badge warn">!</span> have no BOX entry — carton qty defaulted to 1.
+      </div>
+    </div>
+
+    <div class="card" id="generate-card" style="display:none">
+      <button class="btn-generate" id="btn-generate" onclick="generateLabels()">Generate &amp; Preview Labels →</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Labels view -->
+<div id="labels-view" style="display:none">
+  <div class="print-bar">
+    <button class="btn-back" onclick="goBack()">← Back</button>
+    <button class="btn-print" onclick="window.print()">🖨 Print All Labels</button>
+    <span class="label-count-info" id="print-summary"></span>
+  </div>
+  <div id="labels-container"></div>
+</div>
+
+<script>
+const FROM_NAME = 'Vision Industries Group';
+const FROM_ADDR = '480 Elizabeth Ave , Somerset, NJ';
+const CUSTOMERS = [{"no":"1002","name":"ALSIDE WINDOW SYSTEMS (AZ)","addr":"3773 STATE RD","city":"Cuyahoga Falls","zip":"44223-2603","state":"OH"},{"no":"1002","name":"ALSIDE WINDOW SYSTEMS (AZ)","addr":"7550 E 30TH ST","city":"Yuma","zip":"85365-6531","state":"AZ"},{"no":"1003","name":"TARGET WINDOWS","addr":"800 W STATE ST","city":"VANDALIA","zip":"63382-1602","state":"MO"},{"no":"1004","name":"MG BUILDING MATERIALS","addr":"4825 RITTIMAN RD","city":"SAN ANTONIO","zip":"78218-4633","state":"TX"},{"no":"1006","name":"ALSIDE WINDOW SYSTEMS (IA)","addr":"3801 BEVERLY RD SW","city":"CEDAR RAPIDS","zip":"52404-7120","state":"IA"},{"no":"1007","name":"TAYLORS WINDOW & SCREEN INC","addr":"401 Furman Hall Road","city":"GREENVILLE","zip":"29609-3741","state":"SC"},{"no":"1007","name":"TAYLORS WINDOW & SCREEN INC","addr":"401 FURMAN HALL RD","city":"GREENVILLE","zip":"29609-3741","state":"SC"},{"no":"1009","name":"Four Seasons BP","addr":"5005 Veterans Memorial Highway","city":"Holbrook","zip":"11741","state":"NY"},{"no":"1010","name":"ALSIDE WINDOW SYSTEMS (NC)","addr":"3800 Farms Gate Rd","city":"Kinston","zip":"28501","state":"NC"},{"no":"1010","name":"ALSIDE WINDOW SYSTEMS (NC)","addr":"3800 Windows Way","city":"Kinston","zip":"28504","state":"NC"},{"no":"1014","name":"ALSIDE WINDOW SYSTEMS (OH)","addr":"3773 STATE RD.","city":"CUYAHOGA FALLS","zip":"44223","state":"OH"},{"no":"1017","name":"ALSIDE WINDOW SYSTEMS (WA)","addr":"2801 78th Ave. East","city":"Fife","zip":"98424","state":"WA"},{"no":"1018","name":"Thermo-Tech Windows","addr":"1120 38th Ave NE","city":"Sauk Rapids","zip":"56379","state":"MN"},{"no":"1019","name":"Comfort Window MFG.","addr":"109 MONARCH DR","city":"Liverpool","zip":"13088-4514","state":"NY"},{"no":"1020","name":"TEMPCO PRODUCTS CO.","addr":"301 E. TEMPCO AVE","city":"ROBINSON","zip":"62454","state":"IL"},{"no":"1022","name":"Bridgewell Resources LLC","addr":"PO Box 23372","city":"Tigard","zip":"","state":"OR"},{"no":"1025","name":"DIAMOND WINDOWS & DOORS","addr":"99 EAST COTTAGE ST","city":"Boston","zip":"","state":""},{"no":"1027","name":"K & C INDUSTRIES","addr":"3 KENWOOD CR.","city":"FRANKLIN","zip":"02038","state":"MA"},{"no":"1028","name":"THERMAKRAFT CORP","addr":"10349 Franklin Ave.","city":"Franklin  Park","zip":"60131","state":"IL"},{"no":"1029","name":"XO Windows LLC","addr":"2300 S 51ST AVE STE 140","city":"Phoenix","zip":"85043-8008","state":"AZ"},{"no":"1030","name":"Builders FirstSource","addr":"5525 Brittmoore Road","city":"Houston","zip":"77041","state":"TX"},{"no":"1030","name":"Builders FirstSource","addr":"1520 Selene Dr. Suite 100","city":"Houston","zip":"77041","state":"TX"},{"no":"1030","name":"BUILDERS FIRST SOURCE-Roanoke VA Yard","addr":"3488 Aerial Way Drive SW","city":"Roanoke","zip":"24018","state":"VA"},{"no":"1031","name":"Carolina Windows & Doors, Inc.","addr":"3203 S. Memorial Drive","city":"Greenville","zip":"27834","state":"NC"},{"no":"1032","name":"AMERICAN DOOR","addr":"128 HARRISON LANE","city":"SODDY DAISY","zip":"37379","state":"TN"},{"no":"1033","name":"KASSON & KELLER","addr":"60 SCHOOL ROAD","city":"FONDA","zip":"12068","state":"NY"},{"no":"1034","name":"SUNSET WINDOWS & DOORS","addr":"4068 EAST MAIN STREET","city":"BELLEVILLE","zip":"17004","state":"PA"},{"no":"1035","name":"Homestead Custom Vinyl Windows","addr":"1016 McKoons Road","city":"Richfield Springs","zip":"13439","state":"NY"},{"no":"1045","name":"D & W WINDOWS & ENCLOSURES","addr":"8068 EAST COURT STREET","city":"DAVISON","zip":"48423","state":"MI"},{"no":"1048","name":"C & C Window & Door Company","addr":"15050 Labor Place","city":"Hudson","zip":"34667","state":"FL"},{"no":"1051","name":"Tecniplast Inc.","addr":"11 880 57th Avenue","city":"Montreal","zip":"","state":"QC"},{"no":"1053","name":"THERMAL WINDOW","addr":"12805 EAST 31st STREET","city":"TULSA","zip":"74146","state":"OK"},{"no":"1058","name":"THERMOLITE INC","addr":"950 North South Road","city":"Scranton","zip":"18504","state":"PA"},{"no":"1059","name":"SUPERIOR METAL PRODUCTS LLC","addr":"116 CITATION COURT","city":"BIRMINGHAM","zip":"35209","state":"AL"},{"no":"1059","name":"SUPERIOR METAL PRODUCTS LLC","addr":"116 CITATION CT","city":"BIRMINGHAM","zip":"35209-6307","state":"AL"},{"no":"1060","name":"Integrity Plus Windows","addr":"231 Bobrick Drive","city":"Jackson","zip":"38301","state":"TN"},{"no":"1061","name":"AMERICAN WINDOWS & GLASS","addr":"2715 LYNCH RD","city":"EVANSVILLE","zip":"47711-2958","state":"IN"},{"no":"1062","name":"THOMPSON CREEK WINDOW CO","addr":"8100 PENN RANDALL PL","city":"Upper Marlboro","zip":"20772-2673","state":"MD"},{"no":"1063","name":"LEPAGE MILLWORK","addr":"141 CHEMIN DES RAYMOND","city":"RIVIERE-DU-LOUP","zip":"G5R 5X9","state":"QC"},{"no":"1065","name":"AMERIMAX BUILDING PRODUCTS","addr":"3950 MEDFORD DRIVE","city":"Loveland","zip":"80537","state":"CO"},{"no":"1067","name":"Kinro Plant 241 (TX)","addr":"101 Mushroom Road","city":"Waxahachie","zip":"75165","state":"TX"},{"no":"1068","name":"KINRO PLANT 210 (IN)","addr":"PO BOX 2888","city":"Elkhart","zip":"46514","state":"IN"},{"no":"1069","name":"HARVEY INDUSTRIES INC","addr":"30 JACKS BRIDGE RD","city":"Londonderry","zip":"03053-2145","state":"NH"},{"no":"1069","name":"HARVEY INDUSTRIES INC","addr":"7 LEDGEWOOD BLVD","city":"North Dartmouth","zip":"02747-1228","state":"MA"},{"no":"1070","name":"Custom Window Systems Inc.","addr":"1900 SW 44TH AVE","city":"Ocala","zip":"34474-8743","state":"FL"},{"no":"1075","name":"COASTAL WINDOWS MFG","addr":"48166 STATE HWY 100","city":"PORT ISABEL","zip":"78578","state":"TX"},{"no":"1078","name":"Ritescreen-CA","addr":"9322 HYSSOP DR","city":"Rancho Cucamonga","zip":"91730-6103","state":"CA"},{"no":"1079","name":"AMSCO WINDOWS","addr":"1880 SOUTH 1045 WEST","city":"SALT LAKE CITY","zip":"84104","state":"UT"},{"no":"1080","name":"PROVIA PRODUCTS","addr":"10190 State Route 21 NW","city":"Strasburg","zip":"44680-8917","state":"OH"},{"no":"1080","name":"PROVIA PRODUCTS","addr":"425 S BROADWAY ST","city":"SUGARCREEK","zip":"44681-9382","state":"OH"},{"no":"1082","name":"KINRO PLANT 227 (IN)","addr":"1206 EISNHOWER","city":"GOSHEN","zip":"46526","state":"IN"},{"no":"1083","name":"THE WINDOW GROUP INC.","addr":"200 HATTERAS AVE.","city":"CLERMONT","zip":"34711","state":"FL"},{"no":"1083","name":"THE WINDOW GROUP INC.","addr":"19 MIDDLESWORTH FARM ROAD","city":"LONG VALLEY","zip":"07853","state":"NJ"},{"no":"1085","name":"KINRO PLANT 203 (AL)","addr":"112 BREWER STREET","city":"DOUBLE SPRINGS","zip":"35553","state":"AL"},{"no":"1086","name":"TRI-STATE BUILDING MATERIALS","addr":"65-89 LODI STREET","city":"PASSAIC","zip":"07055","state":"NJ"},{"no":"1087","name":"Cascade Windows (WA)","addr":"2225 SO. 75TH AVE\nSUITE 140","city":"PHOENIX","zip":"85043","state":"AZ"},{"no":"1087","name":"Cascade Windows (WA)","addr":"10507 E Montgomery Drive","city":"Spokane Valley","zip":"99206","state":"WA"},{"no":"1089","name":"TRI STATE WINDOW HARDWARE","addr":"301 WEST FORDHAM RD.","city":"BRONX","zip":"10468","state":"NY"},{"no":"1091","name":"Cascade Windows (OR)","addr":"10255 SW Spokane Court","city":"Tualatin","zip":"97062","state":"OR"},{"no":"1092","name":"ANLIN INDUSTRIES","addr":"1665 TOLLHOUSE RD","city":"CLOVIS","zip":"93611","state":"CA"},{"no":"1093","name":"KRAMER WINDOW","addr":"1219 SOUTH ORCHARD ST","city":"MAY WOOD","zip":"60153","state":"IL"},{"no":"1095","name":"RiteScreen-Opa-Locka","addr":"4021 W 108th St, Suite 1","city":"Hialeah","zip":"33018","state":"FL"},{"no":"1096","name":"Legacy Vinyl Windows","addr":"1813 Kelly Blvd.","city":"Carrollton","zip":"75006","state":"TX"},{"no":"1096","name":"KRESTMARK WINDOWS","addr":"3950 BASTILLE ST","city":"DALLAS","zip":"75212","state":"TX"},{"no":"1099","name":"Joyce Manufacturing Company","addr":"1125 BEREA INDUSTRIAL PKWY","city":"Berea","zip":"44017","state":"OH"},{"no":"1100","name":"Ohio Glass Distributer LLC","addr":"173 ROSEWOOD LOOP SE","city":"Commercial Point","zip":"43116","state":"OH"},{"no":"1101","name":"84 LUMBER COMPANY","addr":"6000 ROZZELLES FERRY ROAD","city":"NORTH CHARLOTTE","zip":"28214","state":"NC"},{"no":"1103","name":"U.S. WINDOW FACTORY","addr":"6000 PEACHTREE IND. BLVD.","city":"NORCROSS","zip":"30071","state":"GA"},{"no":"1106","name":"LAKELAND PLASTICS INC","addr":"1019 Noel Ave.","city":"Wheeling","zip":"60090","state":"IL"},{"no":"1107","name":"ULTIMATE WINDOWS","addr":"110 CHELSEA ST","city":"EVERETT","zip":"02149-3531","state":"MA"},{"no":"1107","name":"ULTIMATE WINDOWS","addr":"20 ISLAND ST # 30","city":"LAWRENCE","zip":"01840-1909","state":"MA"},{"no":"1107","name":"ULTIMATE WINDOWS","addr":"130 Shepard St.","city":"Lawrence","zip":"01840","state":"MA"},{"no":"1108","name":"QUINCAILLERIE RABEL INC","addr":"1116 Armand-Bombardier","city":"TERREBONNE","zip":"J6Y 1R9","state":"QC"},{"no":"1111","name":"ATLANTIC WINDOWS","addr":"49 EAST MAIN STREET","city":"STRAIT SHORES","zip":"E4M 2X9","state":"NB"},{"no":"1112","name":"Hershberger Vinyl Window","addr":"1725 Blaylock Store Rd","city":"McKenzie","zip":"38201","state":"TN"},{"no":"1112","name":"LAMBRIGHT VINYL WINDOWS","addr":"62843 COUNTY HWY 50","city":"WADENA","zip":"56482","state":"MN"},{"no":"1112","name":"LAMBRIGHT VINYL WINDOWS","addr":"209 COUNTY ROAD 1715 NORTH","city":"XENIA","zip":"62899","state":"IL"},{"no":"1114","name":"Aluminium Caruso et Fils Inc.","addr":"5528 de Castille","city":"MH","zip":"H1G 3E5","state":"QC"},{"no":"1117","name":"NEW ERA WINDOWS","addr":"2600 WEST 35TH STREET\nDOCK 16","city":"CHICAGO","zip":"60632","state":"IL"},{"no":"1118","name":"Intek Plastics Inc.","addr":"1000 Spiral Blvd.","city":"Hastings","zip":"55033","state":"MN"},{"no":"1119","name":"ATRIUM ALUMINUM","addr":"959 Profit","city":"DALLAS","zip":"75247","state":"TX"},{"no":"1122","name":"Builder Up LLC","addr":"1925 Skinners Turn Road","city":"Owings","zip":"20786","state":"MD"},{"no":"1124","name":"UNITED WINDOW & DOOR","addr":"24 FADEM RD # 36","city":"SPRINGFIELD","zip":"07081-3116","state":"NJ"},{"no":"1125","name":"QUANEX SCREENS LLC (OH)","addr":"7597 BROADMOOR ROAD","city":"PERRYSBURG","zip":"43551","state":"OH"},{"no":"1127","name":"Katerra Inc.","addr":"2494 Sand Hill","city":"San Juan Bautista","zip":"95045","state":"CA"},{"no":"1128","name":"LINDSAY WINDOWS (MO)","addr":"11 CEDAR CT","city":"UNION","zip":"63084-2911","state":"MO"},{"no":"1129","name":"ARIBELL PRODUCTS LTD","addr":"380 Four Valley Drive","city":"Vaughan","zip":"L4LK 5Z1","state":"ON"},{"no":"1129","name":"ARIBELL PRODUCTS LTD","addr":"71 WHITMORE RD\nUNIT 1&2","city":"WOODBRIDGE","zip":"L4L 8G5","state":"ON"},{"no":"1130","name":"Dor-Win MFG. Co.","addr":"109 Midland Ave.","city":"Elmwood Park","zip":"07407","state":"NJ"},{"no":"1131","name":"ATRIUM WINDOWS AND DOORS (NC)","addr":"4501 GREEN POINT DR STE 104","city":"GREENSBORO","zip":"27410","state":"NC"},{"no":"1131","name":"ATRIUM WINDOWS AND DOORS (NC)","addr":"300 WELCOME CENTER DRIVE","city":"WELCOME","zip":"27374","state":"NC"},{"no":"1131","name":"ATRIUM WINDOWS AND DOORS (NC)","addr":"195 Welcome Center Blvd","city":"Welcome","zip":"27374","state":"NC"},{"no":"1137","name":"Andersen-Garland TX","addr":"3801 Regency Crest Drive","city":"Garland","zip":"75041","state":"TX"},{"no":"1139","name":"Dashwood Industries Inc.","addr":"28648 Centre Rd","city":"Strathroy","zip":"","state":"ON"},{"no":"1140","name":"VINYL DESIGN CORP","addr":"7856 HILL AVE","city":"HOLLAND","zip":"43528-9181","state":"OH"},{"no":"1141","name":"DON YOUNG COMPANY INC","addr":"8181 AMBASSADOR ROW","city":"DALLAS","zip":"75247","state":"TX"},{"no":"1144","name":"VINYL KRAFT INC","addr":"3404 RHODES AVE","city":"NEW BOSTON","zip":"45662","state":"OH"},{"no":"1146","name":"Star Hardware Corp","addr":"2995 MAIN ST","city":"Hartford","zip":"06120-1406","state":"CT"},{"no":"1147","name":"M G M INDUSTRIES INC","addr":"287 FREEHILL RD\nATTN: David Robinson","city":"HENDERSONVILLE","zip":"37075","state":"TN"},{"no":"1148","name":"ED STEINMAN INC","addr":"11206 NW 36TH AVE","city":"MIAMI","zip":"33167","state":"FL"},{"no":"1148","name":"ED STEINMAN INC","addr":"1360 CLEVELAND RD.\nATTN: SUNLIGHT WINDOWS","city":"MIAMI BEACH","zip":"33141","state":"FL"},{"no":"1152","name":"Eco Fibre Windows & Doors Inc.","addr":"450 Sicard Street,","city":"Mascouche","zip":"","state":"QC"},{"no":"1155","name":"Champion Window (OH)","addr":"12119 Champion Way","city":"Cincinnati","zip":"45241-6419","state":"OH"},{"no":"1157","name":"MAGNOLIA WINDOW & DOOR","addr":"420 INDUSTRIAL BLVD","city":"Baldwin","zip":"30511","state":"GA"},{"no":"1157","name":"MAGNOLIA WINDOW & DOOR","addr":"1000 PYRATICH DRIVE","city":"BALDWIN","zip":"30511","state":"GA"},{"no":"1157","name":"MAGNOLIA","addr":"1000 PYRATICH DRIVE","city":"BALWIN","zip":"30511","state":"GA"},{"no":"1160","name":"JI GROUP","addr":"2913 E. 22nd Street","city":"Tucson","zip":"85713","state":"AZ"},{"no":"1160","name":"JI GROUP","addr":"2913 E. 22nd Street","city":"Tuscon","zip":"85713","state":"AZ"},{"no":"1162","name":"VINYLMAX","addr":"2921 MCBRIDE CT","city":"HAMILTON","zip":"45011-5420","state":"OH"},{"no":"1163","name":"Millers Barn Window","addr":"505 Cropps Corner Road","city":"Knox","zip":"16232","state":"PA"},{"no":"1165","name":"B & H WINDOWS","addr":"1804 Waits Corners Rd.","city":"PANAMA","zip":"14767","state":"NY"},{"no":"1166","name":"GENTEK BUILDING PRODUCTS","addr":"6320 COLONEL TALBOT ROAD","city":"LONDON","zip":"N6P 1J1","state":"ON"},{"no":"1167","name":"ADVANCED WINDOW PRODUCTS","addr":"3052 SOUTH 460 WEST","city":"Salt Lake City","zip":"84101","state":"UT"},{"no":"1168","name":"RiteScreen-WI","addr":"1003 S State Street","city":"Merrill","zip":"54452","state":"WI"},{"no":"1168","name":"RiteScreen-WI","addr":"1000 Cotter Avenue","city":"Merrill","zip":"54452","state":"WI"},{"no":"1171","name":"Sunshine Window & Door MFG. Inc.","addr":"3209-19 N. 3rd Street","city":"Philadelphia","zip":"19140","state":"PA"},{"no":"1173","name":"KP Building Products","addr":"300 McDonald Blvd.","city":"Alexandria","zip":"","state":"ON"},{"no":"1175","name":"MASTER WINDOW SYSTEMS INC","addr":"5070 Nifda Drive","city":"ATLANTA","zip":"30339","state":"GA"},{"no":"1176","name":"VPI QUALITY WINDOWS","addr":"3420 EAST FERRY AVE","city":"SPOKANE","zip":"99202","state":"WA"},{"no":"1176","name":"VPI QUALITY WINDOWS","addr":"4000 East Main Ave","city":"Spokane","zip":"99202","state":"WA"},{"no":"1176","name":"VPI QUALITY WINDOWS","addr":"2061 SHERRILL DR","city":"Statesville","zip":"28625-9025","state":"NC"},{"no":"1177","name":"Trophy Windows","addr":"16261 HOLLISTER ST STE 150A","city":"Houston","zip":"77066-1434","state":"TX"},{"no":"1179","name":"VYNEX WINDOW SYSTEMS INC.","addr":"1083 3rd Street\nUnit G","city":"North Versailles","zip":"15137","state":"PA"},{"no":"1180","name":"JELD-WEN WINDOWS & DOORS (OR)","addr":"62845 Boyd Acres Rd.","city":"Bend","zip":"97701","state":"OR"},{"no":"1182","name":"First Choice Windows","addr":"33067 Indutrial Rd.","city":"Livonia","zip":"48150","state":"MI"},{"no":"1183","name":"MATHEWS BROTHERS COMPANY","addr":"22 PERKINS RD","city":"BELFAST","zip":"04915-6034","state":"ME"},{"no":"1184","name":"VYTEX CORPORATION","addr":"9425 WASHINGTON BLVD N","city":"LAUREL","zip":"20723-1378","state":"MD"},{"no":"1187","name":"Great Day Improvements","addr":"700 HIGHLAND RD E # 6","city":"Macedonia","zip":"44056-2160","state":"OH"},{"no":"1194","name":"WALLSIDE WINDOWS","addr":"27000 W. TROLLEY IND. RD.","city":"TAYLOR","zip":"48180","state":"MI"},{"no":"1195","name":"Bradenton Cove Construction c/o Palma Sol","addr":"3410 77th Street West","city":"Bradenton","zip":"34209","state":"FL"},{"no":"1196","name":"NORTH STAR MANUFACTURING","addr":"40684 TALBOT LINE ST.","city":"ST. THOMAS","zip":"N5P 3T2","state":"ON"},{"no":"1200","name":"Evolution Window Company","addr":"3420 E. Ferry Road","city":"Spokane","zip":"99201","state":"WA"},{"no":"1201","name":"Rossi Paint Company","addr":"425 Main St.","city":"Orange","zip":"07050","state":"NJ"},{"no":"1202","name":"Meagi Windows & Doors","addr":"526 Hofgaarden Street","city":"La Puente","zip":"91744","state":"CA"},{"no":"1204","name":"MERCURY EXCELUM INC","addr":"215 SOUTH MAIN STREET","city":"EAST WINDSOR","zip":"06088","state":"CT"},{"no":"1205","name":"P.H. TECH INC.","addr":"8650 Boul Guillaume-Couture","city":"Levis","zip":"G6V 9G9","state":"QC"},{"no":"1207","name":"Rivertown Windows Inc.","addr":"9 Trautman Industrial Ct.","city":"Sainte Genevieve","zip":"63670","state":"MO"},{"no":"1210","name":"Vinylmax East","addr":"107 PIERCE ROAD","city":"CLIFTON PARK","zip":"12065","state":"NY"},{"no":"1218","name":"Trimline Windows Inc.","addr":"50 Louise Drive","city":"Ivyland","zip":"18974","state":"PA"},{"no":"1220","name":"Novatech Patio Doors","addr":"108 Textile Drive","city":"Ridgeway","zip":"24148","state":"VA"},{"no":"1221","name":"Kudzu Millwork, Inc","addr":"240 McCurdy Ave. S.","city":"Rainsville","zip":"35986","state":"AL"},{"no":"1222","name":"SIMONTON (WV) Harrisboro","addr":"2641 Ellenboro Rd.","city":"Harrisville","zip":"26362","state":"WV"},{"no":"1223","name":"MI WINDOWS AND DOORS (AZ)","addr":"7555 E STATE ROUTE 69 STE A","city":"PRESCOTT VALLEY","zip":"86314-9468","state":"AZ"},{"no":"1223","name":"MI WINDOWS AND DOORS (AZ)","addr":"6717 2nd St.","city":"Prescott Valley","zip":"86314-2659","state":"AZ"},{"no":"1225","name":"Andersen (Bayport)","addr":"100 8th Avenue North\nDock 1-6\nLocation BP-D1-5","city":"Bayport","zip":"55003","state":"MN"},{"no":"1225","name":"Andersen (Bayport)","addr":"9900 Jamaica Ave South","city":"Cottage Grove","zip":"55016","state":"MN"},{"no":"1225","name":"Andersen (Bayport)","addr":"5929 Packer Drive","city":"Menomonie","zip":"54751","state":"WI"},{"no":"1226","name":"SIMONTON (WV) Ellenboro","addr":"Route 50","city":"Ellenboro","zip":"26346","state":"WV"},{"no":"1227","name":"BUILDER TECH WHOLESALE L C","addr":"2931 SOUTH AVE","city":"TOLEDO","zip":"43609","state":"OH"},{"no":"1229","name":"SERVITEK FENESTRATION INC","addr":"1901 DAGENAIS BLVD WEST.","city":"LAVAL","zip":"H7L 5A3","state":"QC"},{"no":"1231","name":"WEST WINDOW CORP","addr":"226 Industry Park Drive","city":"MARTINSVILLE","zip":"24112","state":"VA"},{"no":"1232","name":"Vinyline Windows & Doors, Inc.","addr":"636 Saw Mill River Rd.","city":"Yonkers","zip":"10710","state":"NY"},{"no":"1234","name":"WESTERN WINDOW","addr":"1815 Madison Avenue","city":"Nampa","zip":"83687","state":"ID"},{"no":"1236","name":"Graham Architectural Products","addr":"1551 Mount Rose Ave.","city":"York","zip":"17403","state":"PA"},{"no":"1237","name":"WINCORE WINDOW CO LLC","addr":"250 STAUNTON TPKE","city":"Parkersburg","zip":"26104-9500","state":"WV"},{"no":"1238","name":"SOLAR INDUSTRIES INC.","addr":"PO BOX 27337","city":"Tucson","zip":"85701","state":"AZ"},{"no":"1241","name":"C-Thru Sunrooms","addr":"1477 DAVRIL CIRCLE","city":"CORONA","zip":"92880","state":"CA"},{"no":"1242","name":"All Seasons Door & Window Mfg.","addr":"28 Edgeboro Road\nE. Brunswick, NJ 08816","city":"E. Brunswick","zip":"08816","state":"NJ"},{"no":"1245","name":"Thermoseal-TX","addr":"5350 Frye Rd.","city":"Irving","zip":"75061","state":"TX"},{"no":"1246","name":"Tri-State Building Specialties","addr":"1985 Rutgers University Blvd.","city":"Lakewood","zip":"08701","state":"NJ"},{"no":"1246","name":"Tri-State Building Specialties","addr":"845 Towbin ave","city":"Lakewood","zip":"08701","state":"NJ"},{"no":"1248","name":"WINDOW MART","addr":"5760 ALBERT PIKE","city":"ROYAL","zip":"71968","state":"AR"},{"no":"1252","name":"SURVIVOR II INC.","addr":"1239 Central Ave.","city":"Hillside","zip":"07205","state":"NJ"},{"no":"1253","name":"MLC Windows","addr":"2515 23 Mile Rd.","city":"Sheby Township","zip":"48316","state":"MI"},{"no":"1254","name":"MILGARD WINDOWS & DOORS-CA","addr":"6050 88th St","city":"SACRAMENTO","zip":"95828-1119","state":"CA"},{"no":"1254","name":"MILGARD WINDOWS & DOORS-CA","addr":"355 Easy Street","city":"Simi Valley","zip":"93065","state":"CA"},{"no":"1254","name":"MILGARD WINDOWS & DOORS-CA","addr":"26879 Diaz Rd","city":"Temecula","zip":"92590","state":"CA"},{"no":"1256","name":"SWISCO INC","addr":"7030 Colonial Hwy","city":"Pennsauken","zip":"08109-4306","state":"NJ"},{"no":"1258","name":"Blaine Window & Door","addr":"2410 Linden Lane","city":"Silver Spring","zip":"","state":""},{"no":"1259","name":"Minnesota Valley Millwork, Inc.","addr":"17021 Fish Point St. SE","city":"Prior Lake","zip":"55372","state":"MN"},{"no":"1260","name":"ES Windows","addr":"Av. Circunvalar a 100 mts de la V\u00eda 40","city":"Barranquilla","zip":"","state":"ATL"},{"no":"1260","name":"ES Windows","addr":"8760 N.W. 101 Street","city":"Medley","zip":"33178","state":"FL"},{"no":"1260","name":"ES Windows","addr":"5220 NW 72nd Ave.  Bay 4","city":"Miami","zip":"33166","state":"FL"},{"no":"1261","name":"Windsor IA-Norwalk","addr":"901 S SUNSET DR","city":"Norwalk","zip":"50211-9902","state":"IA"},{"no":"1261","name":"WINDSOR WINDOW & DOORS (IA)","addr":"900 S 19TH ST","city":"W DES MOINES","zip":"50265-5512","state":"IA"},{"no":"1264","name":"WINDSOR WINDOW & DOORS (NC)","addr":"2210 STAFFORD STREET EXT","city":"MONROE","zip":"28110","state":"NC"},{"no":"1264","name":"WINDSOR WINDOW & DOORS (NC)","addr":"1400 N Sutherland ave","city":"MONROE","zip":"28110","state":"NC"},{"no":"1264","name":"WINDSOR WINDOW & DOORS (NC)","addr":"3701 PRAIRIE COMMONS","city":"WILLISTON","zip":"58801","state":"ND"},{"no":"1267","name":"Diversified Window Solutions, Inc.","addr":"1200 Charles Street","city":"Longwood","zip":"32750","state":"FL"},{"no":"1268","name":"MOSS SUPPLY","addr":"11253 Leadbetter Rd.","city":"Ashland","zip":"23005","state":"VA"},{"no":"1268","name":"MOSS SUPPLY","addr":"5001 N GRAHAM ST","city":"CHARLOTTE","zip":"28269-4826","state":"NC"},{"no":"1270","name":"Hayfield Window and Door Company","addr":"107 9th Street S.E.","city":"Hayfield","zip":"55940","state":"MN"},{"no":"1271","name":"Custom Quality Windows LLC","addr":"1928 N. Old 92","city":"Evansville","zip":"53536","state":"WI"},{"no":"1273","name":"Newsouth Window Solutions, Inc.","addr":"10741 Crossroads Commerce Blvd","city":"Tampa","zip":"33610","state":"FL"},{"no":"1274","name":"Tri State Custom Windows","addr":"3940 State Highway 23","city":"Dodgeville","zip":"53533","state":"WI"},{"no":"1275","name":"Cascade Windows (UT)","addr":"5323 Harold Gatty Drive","city":"Salt Lake City","zip":"84116","state":"UT"},{"no":"1276","name":"WINTECH INC","addr":"387 SALE BARN ROAD","city":"CASSVILLE","zip":"65625","state":"MO"},{"no":"1276","name":"WINTECH INC","addr":"P.O. BOX 480","city":"MONETT","zip":"65708","state":"MO"},{"no":"1281","name":"Contour Windows Inc.","addr":"2211 Auburn Rd.","city":"Auburn Hills","zip":"48326","state":"MI"},{"no":"1281","name":"Contour Windows Inc.","addr":"1207 Airport Drive","city":"Shreveport","zip":"71107","state":"LA"},{"no":"1282","name":"WOJAN WINDOW & DOOR CORPORATION","addr":"340 JAY ST","city":"Coldwater","zip":"49036-2110","state":"MI"},{"no":"1285","name":"Sierra Pacific Windows-Red Bluff","addr":"11605 Reading Road","city":"Red Bluff","zip":"96080","state":"CA"},{"no":"1286","name":"VEKA INC","addr":"100 VEKA DRIVE","city":"FOMBELL","zip":"16123","state":"PA"},{"no":"1287","name":"Brixius Mfg., Inc.","addr":"814 S. 28st. St.","city":"Manitowoc","zip":"54220","state":"WI"},{"no":"1288","name":"Delta Industrial Systems Corp.","addr":"12575 Sawgrass Corp. Parkway","city":"Sunrise","zip":"33323","state":"FL"},{"no":"1289","name":"CENTRAL WOODWORK","addr":"717 MELROSE AVE","city":"NASHVILLE","zip":"37211-2166","state":"TN"},{"no":"1290","name":"NATIONAL VINYL LLC.","addr":"7 COBURN ST","city":"Chicopee","zip":"01013-3809","state":"MA"},{"no":"1291","name":"YKK AP AMERICA INC","addr":"4234 Ocmulgee East Blvd.","city":"Macon","zip":"31217","state":"GA"},{"no":"1291","name":"YKK AP AMERICA INC","addr":"140 Tractor Dr.","city":"Macon","zip":"31216","state":"GA"},{"no":"1294","name":"Wescap Real Estate Services Inc","addr":"3770 S Yaqui Drive","city":"Flagstaff","zip":"86005","state":"AZ"},{"no":"1294","name":"Wescap Real Estate Services Inc","addr":"808 E Missouri Ava. Attn: Leasing Office/Aaron Kuhman","city":"Phoenix","zip":"85014","state":"AZ"},{"no":"1295","name":"YODER CUSTOM WINDOW","addr":"18759 COOKE RD.","city":"FREDERICK TOWN","zip":"43019","state":"OH"},{"no":"1296","name":"WINDOW PLUS","addr":"207 MONROE ST","city":"PASSAIC","zip":"07055","state":"NJ"},{"no":"1298","name":"Rodenhouse Door & Window, Inc.","addr":"5120 West River Drive","city":"Comstock Park","zip":"49321","state":"MI"},{"no":"1300","name":"YODER WINDOW & SIDING LTD","addr":"PLANT 3 5174 TR 351","city":"MILLERSBURG","zip":"44654","state":"OH"},{"no":"1301","name":"WINDOWCRAFTERS","addr":"2033 TUCKER INDUSTRIAL ROAD","city":"TUCKER","zip":"30084","state":"GA"},{"no":"1303","name":"Florida Windows & Doors","addr":"12801 Commonwealth Drive\n#15","city":"Ft. Myers","zip":"33913","state":"FL"},{"no":"1304","name":"A-1 Window Mfg. Ltd.","addr":"Unit # 1 8038 Glenwood Drive","city":"Burnaby","zip":"V3N 5E9","state":"BC"},{"no":"1305","name":"Dan River Window Co. Inc.","addr":"1111 Wall Street","city":"South Boston","zip":"24592","state":"VA"},{"no":"1306","name":"PLYGEM-MW (NC)","addr":"2150 French Settlement Road","city":"Dallas","zip":"75212","state":"TX"},{"no":"1306","name":"PLYGEM-MW (NC)","addr":"433 NORTH MAIN STREET","city":"ROCKY MOUNT","zip":"24151","state":"VA"},{"no":"1307","name":"Screenco Manufacturing USA, Inc.","addr":"2932 Behrens Parkway","city":"Sheboygan,","zip":"53081-7394","state":"WI"},{"no":"1308","name":"East Central Indiana Vinyl Window MFG","addr":"50 Paul R. Foulke Parkway","city":"Hagerstown","zip":"47346","state":"IN"},{"no":"1311","name":"CHELSEA BUILDING PRODUCTS INC","addr":"565 CEDAR WAY","city":"Oakmont","zip":"","state":""},{"no":"1312","name":"Vistamark, Inc.","addr":"3581 S Hwy 287","city":"Waxahachie","zip":"75165","state":"TX"},{"no":"1313","name":"Isothermic Inc.","addr":"370 Ch Du Mont-Granit O","city":"Thetfo Mines","zip":"","state":"QC"},{"no":"1314","name":"SPROUSE WINDOWS & DOORS","addr":"1200 N STATE ROUTE 2","city":"NEW MARTINSVILLE","zip":"26155-2523","state":"WV"},{"no":"1317","name":"Darby Doors","addr":"3110 Kendall Drive","city":"Florence","zip":"35630","state":"AL"},{"no":"1320","name":"SLOCOMB WINDOWS & DOORS INC","addr":"777 SANS SOUCI PKWY","city":"Hanover Township","zip":"18706-1330","state":"PA"},{"no":"1321","name":"PLYGEM-GLW","addr":"30499 TRACY ROAD","city":"WALBRIDGE","zip":"43465","state":"OH"},{"no":"1325","name":"Vinylume Products Inc.","addr":"3745 Henricks Road","city":"Youngstown","zip":"44515","state":"OH"},{"no":"1326","name":"CLEARVIEW VINYL WINDOWS","addr":"5350 COLE ST","city":"MUNNSVILLE","zip":"13409","state":"NY"},{"no":"1327","name":"NORTHEAST BUILDING PRODUCTS CO","addr":"1211 Ford Road","city":"Bensalem","zip":"19020","state":"PA"},{"no":"1327","name":"NORTHEAST BUILDING PRODUCTS CO","addr":"4280 ARAMINGO AVE","city":"Philadelphia","zip":"19124-5007","state":"PA"},{"no":"1328","name":"SOLAR INDUSTRIES INC.","addr":"PO BOX 27337","city":"Tucson","zip":"85701","state":"AZ"},{"no":"1329","name":"Coastal Window & Door Center","addr":"780 Fashion Drive","city":"Columbia","zip":"29229","state":"SC"},{"no":"1330","name":"Thomas Lumber Co. Inc.","addr":"2128 Old Ashland City Rd.","city":"Clarksville","zip":"37043","state":"TN"},{"no":"1332","name":"ViWinTech Windows & Doors","addr":"2400 Irvin Cobb Dr.","city":"Paducah","zip":"42003","state":"KY"},{"no":"1333","name":"J-N-L Window/John Raber","addr":"5155 Keith Rd.,","city":"Randolph","zip":"14772","state":"NY"},{"no":"1334","name":"GLASS AMERICA WINDOW MFG. INC. NY","addr":"3550 LAWSON BLVD","city":"OCEANSIDE","zip":"11572","state":"NY"},{"no":"1335","name":"McCray Millwork","addr":"3200 McCormick","city":"Kansas City","zip":"66115","state":"KS"},{"no":"1337","name":"SOFT-LITE WINDOW","addr":"10250 PHILIPP PKWY","city":"STREETSBORO","zip":"44241-4765","state":"OH"},{"no":"1341","name":"Ritescreen-ND","addr":"4001 32nd. Street North Unit B","city":"Fargo","zip":"58102","state":"ND"},{"no":"1343","name":"Ritescreen-TN","addr":"193 JUDGE DON LEWIS BLVD","city":"ELIZABETHTON","zip":"37643-6007","state":"TN"},{"no":"1344","name":"CLIMATE SOLUTIONS","addr":"9230 GAGE AVE","city":"FRANKLIN PARK","zip":"60131-2106","state":"IL"},{"no":"1346","name":"Anderson Windows, Inc.(ConCtr)","addr":"5929 Packer Drive","city":"Menomonie","zip":"54751","state":"WI"},{"no":"1349","name":"JELD-WEN WINDOWS & DOORS (IL)","addr":"201 Evans Road","city":"Rantoul","zip":"61866","state":"IL"},{"no":"1351","name":"CLEARVIEW VYNIL WINDOWS MI","addr":"","city":"","zip":"","state":""},{"no":"1352","name":"M2O WINDOWS","addr":"19215 SHERWOOD","city":"DETROIT","zip":"48234","state":"MI"},{"no":"1352","name":"M2O WINDOWS","addr":"8503 East 9 Mile Rd.","city":"Warren","zip":"48089","state":"MI"},{"no":"1354","name":"Sunshine Windows Manufacturing, Inc.","addr":"1785 W 33rd Place","city":"Hialeah","zip":"33012","state":"FL"},{"no":"1355","name":"COLUMBIA INDUSTRIES INC","addr":"429 EAST MCPHERSON ST.","city":"LINDSBORG","zip":"67456","state":"KS"},{"no":"1359","name":"Reilly Windows & Doors","addr":"","city":"","zip":"","state":""},{"no":"1360","name":"Lawson Industries Inc.","addr":"8501 NW. 90th Street","city":"Medley","zip":"","state":"FL"},{"no":"1361","name":"OKNA WINDOWS CORP","addr":"400 CROSSING DR","city":"Bristol","zip":"19007-1510","state":"PA"},{"no":"1362","name":"MI WINDOWS AND DOORS(HEGINS,PA)","addr":"79 PARK LN","city":"HEGINS","zip":"17938-9089","state":"PA"},{"no":"1365","name":"Lindsay Windows-WA","addr":"11101 South Tacoma Way SUITE B","city":"Lakewood","zip":"98499","state":"WA"},{"no":"1366","name":"QUANEX SCREENS LLC  (CA)","addr":"5901 88TH STREET\nSTE-100","city":"SACRAMENTO","zip":"95828","state":"CA"},{"no":"1368","name":"Dyke Industries, Inc.","addr":"6600 Best Friend Rd.","city":"Norcross","zip":"30071","state":"GA"},{"no":"1369","name":"COMFORT VIEW PRODUCTS","addr":"320 COWETA INDUSTRIAL PKWY.\nBLDG #7, STE. C-1","city":"NEWNAN","zip":"30265","state":"GA"},{"no":"1371","name":"GLASS AMERICA WINDOW MFG. INC.","addr":"","city":"","zip":"","state":""},{"no":"1373","name":"BARRY SUPPLY CO.","addr":"36 WEST 17TH ST.","city":"NEW YORK","zip":"10011","state":"NY"},{"no":"1374","name":"Russell Millworks, Inc.","addr":"DBA Russell Millworks, Inc.","city":"Auburn","zip":"30011","state":"GA"},{"no":"1376","name":"Piva Group North America, LLC","addr":"5 Trautman Industrial Ct.","city":"Ste. Genevieve","zip":"63670","state":"MO"},{"no":"1377","name":"Elevate Windows and Doors, LLC","addr":"1850 Westoark Dr., \nSuite 100","city":"Grand Prairie","zip":"75050","state":"TX"},{"no":"1381","name":"Weather Gard","addr":"20775 Chesely Dr.","city":"Farmington","zip":"48336","state":"MI"},{"no":"1383","name":"PARADIGM WINDOW SOLUTIONS","addr":"56 MILLIKEN ST","city":"PORTLAND","zip":"04103-1530","state":"ME"},{"no":"1384","name":"STYLELINE Windows-A div. of 4Track System","addr":"1445 Holland Road","city":"Maumee","zip":"43537","state":"OH"},{"no":"1386","name":"CORONET WINDOW COMPANY","addr":"7576 NW CALDWELL","city":"KIDDER","zip":"64649","state":"MO"},{"no":"1387","name":"EASTERN METAL SUPPLY, INC.","addr":"10030 BAVARIA RD.","city":"FT. MYERS","zip":"33913","state":"FL"},{"no":"1387","name":"W & D","addr":"511 LEONARD AVE","city":"LEHIGH ACRES","zip":"33971","state":"FL"},{"no":"1389","name":"CROFT LLC","addr":"HIGHWAY 51 NORTH","city":"MAGNOLIA","zip":"39652","state":"MS"},{"no":"1389","name":"CROFT LLC","addr":"1800 North Clark Ave","city":"Magnolia","zip":"39652","state":"MS"},{"no":"1393","name":"CRYSTAL WINDOW & DOOR SYSTEMS","addr":"204 Franklin Valley Road","city":"Dalton","zip":"18414","state":"PA"},{"no":"1393","name":"CRYSTAL WINDOW & DOOR SYSTEMS","addr":"3110 WHITESTONE EXPY","city":"FLUSHING","zip":"11354-2531","state":"NY"},{"no":"1394","name":"PELLA CORPORATION","addr":"4949 Amon Carter Blvd V06","city":"FORT WORTH","zip":"76155","state":"TX"},{"no":"1394","name":"PELLA CORPORATION","addr":"2000 PROLINE PLACE - G03","city":"GETTYSBURG","zip":"17325","state":"PA"},{"no":"1394","name":"PELLA CORPORATION","addr":"111 Pella Place  No. 6\nDeliver To: Macob Dock 2 PROD. (6000)","city":"Macomb","zip":"61455","state":"IL"},{"no":"1394","name":"PELLA CORPORATION","addr":"307 PELLA WAY\nDOCK: VINYL 1 - M02","city":"MURRAY","zip":"42071","state":"KY"},{"no":"1394","name":"PELLA CORPORATION","addr":"829 PELLA CORP DRIVE\nDOCK 310F-P01","city":"PELLA","zip":"50219","state":"IA"},{"no":"1394","name":"PELLA CORPORATION","addr":"18600 NE WLKES RD. - P52","city":"PORTLAND","zip":"97230","state":"OR"},{"no":"1394","name":"PELLA CORPORATION","addr":"310 Rockingham Drive \nV02\nDock 12000","city":"Reidsville","zip":"27320","state":"NC"},{"no":"1394","name":"PELLA CORPORATION","addr":"1701 EAST BROAD\nDOCK - DYNORTH","city":"STORY CITY","zip":"50248","state":"IA"},{"no":"1394","name":"PELLA CORPORATION","addr":"1501 EXPERIMENT FARM RD","city":"Troy","zip":"45373-9466","state":"OH"},{"no":"1394","name":"PELLA CORPORATION","addr":"1501 EXPERIMENT FARM RD","city":"Troy","zip":"45373-9466","state":"OH"},{"no":"1394","name":"PELLA CORPORATION","addr":"375 METROPOLITAN DRIVE\nWO2","city":"WEST COLUMBIA","zip":"29170","state":"SC"},{"no":"1395","name":"PARAMOUNT WINDOWS CORP","addr":"550 WEST SOUTHERN AVE.","city":"TEMPE","zip":"","state":"AZ"},{"no":"1395","name":"PARAMOUNT WINDOW CORP","addr":"550 WEST SOUTHERN AVE.","city":"TEMPE","zip":"85282","state":"AZ"},{"no":"1396","name":"CRYSTAL WINDOW & DOORS (IL)","addr":"1300 W 35TH ST","city":"CHICAGO","zip":"60609-1301","state":"IL"},{"no":"1397","name":"Lux Windows and Glass Ltd.","addr":"6875 9th Street N.E.","city":"Calgary","zip":"","state":"AB"},{"no":"1398","name":"CUSTOM BUILT WINDOW AND DOOR SYSTEMS","addr":"80 MEADOW ST","city":"WARWICK","zip":"02886-6918","state":"RI"},{"no":"1399","name":"ELIXIR INDUSTRIES","addr":"1765 GENESIS ROAD","city":"CROSSVILLE","zip":"38555","state":"TN"},{"no":"1399","name":"ELIXIR INDUSTRIES","addr":"1300 POPE DR.","city":"Douglas","zip":"31533","state":"GA"},{"no":"1400","name":"3B Windows & Doors Inc.","addr":"PO Box 58027","city":"Vermon","zip":"","state":"CA"},{"no":"1401","name":"CUSTOM VINYL","addr":"260 ENTERPRISE DRIVE\nSTE. B","city":"NEWPORT NEWS","zip":"23603","state":"VA"},{"no":"1402","name":"PGT INDUSTRIES INC.","addr":"3400 PRECISION DR","city":"North Venice","zip":"34275-3677","state":"FL"},{"no":"1402","name":"PGT INDUSTRIES INC.","addr":"2121 HEILIG RD.","city":"SALISBURY","zip":"28146","state":"NC"},{"no":"1404","name":"Pella Northland, LLC","addr":"15300 25th Ave. N, Ste. 100\nAttn:  Brian Robbins","city":"Plymouth","zip":"55447","state":"MN"},{"no":"1407","name":"Extang Corp.","addr":"5400 S STATE RD","city":"Ann Arbor","zip":"48108-9754","state":"MI"},{"no":"1408","name":"GILKEY WINDOWS","addr":"3625 HAUCK RD","city":"CINCINNATI","zip":"45241-1605","state":"OH"},{"no":"1410","name":"MI WINDOWS AND DOORS (GRATZ PA)","addr":"760 W MARKET ST","city":"GRATZ","zip":"17030-7701","state":"PA"},{"no":"1413","name":"AMERICAN WINDOW SYSTEMS","addr":"6201-C  DOWDELL ROAD","city":"FORT WORTH","zip":"76119","state":"TX"},{"no":"1417","name":"Northern Architectectural System","addr":"111 Central Ave.","city":"Teterboro","zip":"07608","state":"NJ"},{"no":"1422","name":"KOLBE&KOLBE MILLWORKS CO.","addr":"1211 DEPOT STREET","city":"MANAWA","zip":"54949","state":"WI"},{"no":"1424","name":"Champion Windows Inc. (CA)","addr":"6676 Lance Drive","city":"Riverside","zip":"92507","state":"CA"},{"no":"1425","name":"KENDRA ALUMINUM PRODUCTS LTD.","addr":"12600 NORTHWEST 107TH AVE","city":"MIAMI","zip":"33178","state":"FL"},{"no":"1427","name":"VECTOR","addr":"1505 Pebble Lake Rd.","city":"Fergus Falls","zip":"56537","state":"MN"},{"no":"1428","name":"TruXedo Inc.","addr":"2209 Kellen Gross Dr.","city":"Yankton","zip":"57078-1078","state":"SD"},{"no":"1429","name":"ALL ABOUT DOORS AND WINDOWS","addr":"110 E. 16th Ave.","city":"North Kanasa City","zip":"64116","state":"MO"},{"no":"1431","name":"POLARIS TECHNOLOGIES","addr":"500 VICTORIA RD","city":"AUSTINTOWN","zip":"44515-2030","state":"OH"},{"no":"1432","name":"TUCKER DOOR & TRIM CORP.","addr":"650 HIGHWAY 83","city":"Monroe","zip":"30655","state":"GA"},{"no":"1433","name":"J & J Screen Company","addr":"1315 Main Street","city":"Grandview","zip":"64030","state":"MO"},{"no":"1435","name":"PORTAL INC","addr":"10 Tracy Drive\nAVON INDUSTRIAL PARK","city":"Avon","zip":"02322","state":"MA"},{"no":"1436","name":"SUPERIOR WINDOWS(PA)","addr":"7903 SALTSBURG ROAD","city":"PITTSBURGH","zip":"15239","state":"PA"},{"no":"1438","name":"DUKE VINYL","addr":"304 WEST 32ND STREET","city":"CHARLOTTE","zip":"28206","state":"NC"},{"no":"1439","name":"PORTLAND WINDOWS","addr":"13 WASHINGTON AVE.","city":"SCARSBOROUGH","zip":"04074","state":"ME"},{"no":"1441","name":"Trust Windows Corp.","addr":"55 Westcreek Drive","city":"VAUGHAN","zip":"L4L 9N6","state":"ON"},{"no":"1442","name":"PRECISE FORMS INC.","addr":"201 NORTH SPRUCE","city":"BATES CITY","zip":"64011","state":"MO"},{"no":"1445","name":"PRECISION MILLWORKS OF ALABAMA,LLC","addr":"910 DAHLONEGA HWY","city":"CUMMING","zip":"30040","state":"GA"},{"no":"1446","name":"BAVARIAN POLYMERS USA","addr":"359 PRINTWOOD DRIVE","city":"Dickson","zip":"37055","state":"TN"},{"no":"1447","name":"EnerLux Window & Doors","addr":"1530 Pine Ave.","city":"Crete","zip":"68333","state":"NE"},{"no":"1449","name":"Window Tech Systems, Inc.","addr":"15 Old Stonebreak Road","city":"Malta","zip":"12020","state":"NY"},{"no":"1450","name":"Tri-State Window Factory Corp.","addr":"360 Marcus Blvd.","city":"Deer Park","zip":"11729","state":"NY"},{"no":"1452","name":"Arcadia Inc. d/b/a Arcadia Custom","addr":"9280 E. Old Vail Rd.","city":"Tucson","zip":"85701","state":"AZ"},{"no":"1453","name":"Energi Solution De Fenestration-Terrebonn","addr":"","city":"","zip":"","state":""},{"no":"1454","name":"E&M WINDOWS","addr":"15240 Shedd Rd.","city":"Middlefield","zip":"44062","state":"OH"},{"no":"1455","name":"PRIME-LINE","addr":"26950 SAN BERNADINO AVE.","city":"REDLANDS","zip":"92374","state":"CA"},{"no":"1455","name":"PRIME-LINE","addr":"494 East Commercial Rd","city":"San Bernardino","zip":"92408","state":"CA"},{"no":"1456","name":"Duralum Products Inc.","addr":"2485 Railroad Street","city":"Corona","zip":"92879","state":"CA"},{"no":"1458","name":"Western Window Systems","addr":"5621 South 25th Street","city":"Phoenix","zip":"85003","state":"AZ"},{"no":"1459","name":"PRO WINDOW AND DOOR","addr":"6500 FORBING RD # ROADSTE # 100","city":"LITTLE ROCK","zip":"72209-3538","state":"AR"},{"no":"1459","name":"PRO WINDOW AND DOOR","addr":"2124 N. GARLAND","city":"WICHITA","zip":"67203","state":"KS"},{"no":"1461","name":"QUAKER  WINDOWS","addr":"3353 Highway 52","city":"Eldon","zip":"65026-4460","state":"MO"},{"no":"1461","name":"QUAKER  WINDOWS","addr":"504 U.S. HWAY 63 S.","city":"FREEBURG","zip":"65035","state":"MO"},{"no":"1465","name":"Beracah Homes, Inc.","addr":"9590 Nanticoke Business Park Drive","city":"Greenwood","zip":"19950","state":"DE"},{"no":"1466","name":"ACERLUM CERRAMIENTOS SA DE CV","addr":"12118 Suit B Jef Dr.","city":"LAREDO","zip":"78045","state":"TX"},{"no":"1466","name":"ACERLUM CERRAMIENTOS SA DE CV","addr":"1615 Vidal Cantu Rd.","city":"LAREDO","zip":"78045","state":"TX"},{"no":"1470","name":"STARLINE WINDOWS","addr":"19091 36th Avenue","city":"SURREY","zip":"V3Z 0P6","state":"BC"},{"no":"1472","name":"TEMPEST ARCHITECTURAL PRODUCT","addr":"767 E. 132ND ST","city":"BRONX","zip":"10454","state":"NY"},{"no":"1473","name":"Alumina Distribution Center, LLC","addr":"14475 NW 26th Ave.","city":"Opa Locka","zip":"33054","state":"FL"},{"no":"1474","name":"WINDOW REPAIR SYSTEMS INC.","addr":"2363 Sandifer Blvd.","city":"Westminster","zip":"29693","state":"SC"},{"no":"1476","name":"Prime Window Systems-CO","addr":"12775 East 38th Ave.","city":"Denver","zip":"80239","state":"CO"},{"no":"1477","name":"PLYGEM -PW (WA)","addr":"5001 \"D\" ST. NW","city":"AUBURN","zip":"98001","state":"WA"},{"no":"1478","name":"Prime Window Systems-WA","addr":"12775 East 38th Ave","city":"Denver","zip":"80239","state":"CO"},{"no":"1478","name":"Prime Window Systems-WA","addr":"3400Tacoma Street","city":"Union Gap","zip":"98903","state":"WA"},{"no":"1479","name":"ENDRIES INTERNATIONAL INC.","addr":"6989 55TH ST N STE A","city":"OAKDALE","zip":"55128-1724","state":"MN"},{"no":"1481","name":"Therval S.A. De C.V.","addr":"3269 North Grand Ave.  Suite B","city":"Nogales","zip":"85621","state":"AZ"},{"no":"1481","name":"Therval S.A. De C.V.","addr":"1451 NORTH INDUSTRIAL PARK DRIVE UNITS 2-3","city":"Nogales","zip":"85621","state":"AZ"},{"no":"1482","name":"REGENCY PLUS INC","addr":"2000 LOCUST GAP HIGHWAY","city":"MOUNT CARMEL","zip":"17851","state":"PA"},{"no":"1485","name":"ARTESIA GLASS WINDOWS","addr":"2790 MARTIN LUTHER KING JR. BLVD","city":"Lynwood","zip":"90262","state":"CA"},{"no":"1487","name":"REMODELERS SUPPLY MFG","addr":"2622 N PULASKI RD","city":"CHICAGO","zip":"60639-2118","state":"IL"},{"no":"1488","name":"PARTS ON WHEELS","addr":"104 SW Memorial PKWY #3","city":"FORT WALTON","zip":"32548","state":"FL"},{"no":"1492","name":"MONDA WINDOW AND DOOR CORP","addr":"4101 WEST 42ND PLACE","city":"CHICAGO","zip":"60632","state":"IL"},{"no":"1492","name":"MONDA WINDOW AND DOOR CORP","addr":"1901 HILLSIDE LANE","city":"LISLE","zip":"60532","state":"IL"},{"no":"1493","name":"Pasad LLC","addr":"2750 Grant Ave","city":"Philadelphia","zip":"19136","state":"PA"},{"no":"1495","name":"Crown Windows and Vinyl Products","addr":"540 Industrial Drive","city":"Oak Hill","zip":"25901","state":"WV"},{"no":"1496","name":"RITESCREEN-PA","addr":"193 Judge Don Lewis Blvd.","city":"Elizabethton","zip":"37643","state":"TN"},{"no":"1496","name":"RITESCREEN-PA","addr":"4314 ROUTE 209 E.","city":"ELIZABETHVILLE","zip":"17023","state":"PA"},{"no":"1496","name":"RITESCREEN-PA","addr":"4021 W 108th Street Suite 1","city":"Hialeah","zip":"33018","state":"FL"},{"no":"1497","name":"TH Enterprises LLC","addr":"3359 SW Ichetucknee Ave.","city":"Lake City","zip":"32024","state":"FL"},{"no":"1497","name":"TH Enterprises LLC","addr":"25045 County Rd. 137","city":"Obrien","zip":"32071","state":"FL"},{"no":"1498","name":"NEWTEC WINDOW & DOOR INC.","addr":"3159 WEST 36TH STREET","city":"CHICAGO","zip":"60632","state":"IL"},{"no":"1501","name":"QUANEX SCREENS LLC (WA)","addr":"","city":"","zip":"","state":""},{"no":"1503","name":"FIVE STAR ALUMINUM","addr":"2012 86TH STREET","city":"NORTH BERGEN","zip":"07047","state":"NJ"},{"no":"1504","name":"RJT INDUSTRIES","addr":"14893 PERSISTANCE DR.","city":"WOODBRIDGE","zip":"22191","state":"VA"},{"no":"1505","name":"WIN-CAN WINDOWS & DOORS INC.","addr":"30 West Pearce Street","city":"RICHMOND HILL","zip":"L4B 1E3","state":"ON"},{"no":"1507","name":"RK WINDOW INC","addr":"215 NORMAN AVE.","city":"BROOKLYN","zip":"11222","state":"NY"},{"no":"1509","name":"ROGERS WINDOWS","addr":"500 BLUESKY PARKWAY","city":"LEXINGTON","zip":"40509","state":"KY"},{"no":"1510","name":"MI WINDOWS & DOORS-Flower Mound","addr":"1900 Lakeside Pkwy.","city":"Flower Mound","zip":"75022","state":"TX"},{"no":"1512","name":"ROSATI WINDOWS","addr":"4200 ROBERTS RD.","city":"COLUMBUS","zip":"43228","state":"OH"},{"no":"1513","name":"LEGACY PRODUCTS LLC","addr":"12727 SPECTRIM LANE","city":"MIDLOTHIAN","zip":"23112","state":"VA"},{"no":"1514","name":"Avanti Windows & Doors AZ","addr":"12501 W Olive Ave","city":"El Mirage","zip":"85335","state":"AZ"},{"no":"1514","name":"Avanti Windows & Doors AZ","addr":"12501 W Olive Ave","city":"El Mirage","zip":"85335","state":"AZ"},{"no":"1514","name":"Avanti Windows & Doors LLC","addr":"5107 N 51st Ave.\nSte. 2","city":"Glendale","zip":"85301","state":"AZ"},{"no":"1514","name":"Avanti Windows & Doors LLC","addr":"933 Hensley Lane","city":"Wylie","zip":"75098","state":"TX"},{"no":"1515","name":"Vinyl Window Design","addr":"550 Oakdale Rd.","city":"Toronto","zip":"","state":"ON"},{"no":"1516","name":"Royal Aluminum Co., Inc.","addr":"620 Market Street","city":"NJ","zip":"","state":"NJ"},{"no":"1518","name":"Western Forms","addr":"6200 Equitable Rd.","city":"Kansas City","zip":"64101","state":"MO"},{"no":"1519","name":"NT WINDOW, INC","addr":"4949 RENDON RD","city":"FORT WORTH","zip":"76140","state":"TX"},{"no":"1521","name":"BMC East LLC","addr":"PO Box 25178","city":"Lehigh Valley","zip":"18001","state":"PA"},{"no":"1522","name":"FUTUREGUARD BUILDING PRODUCTS INC","addr":"101 Merrow Rd.","city":"Auburn","zip":"04210","state":"ME"},{"no":"1525","name":"Hilson B Ragas LLC","addr":"4391 Stephens Rd","city":"Pace","zip":"","state":"FL"},{"no":"1527","name":"MILGARD WINDOWS & DOOR-WA","addr":"965 54th Ave E","city":"Fife","zip":"98424","state":"WA"},{"no":"1527","name":"MILGARD WINDOWS & DOOR-WA","addr":"910 54th Ave E","city":"Fife","zip":"98424-2748","state":"WA"},{"no":"1527","name":"MILGARD WINDOWS & DOOR-WA","addr":"2380 70TH AVE E.\nRECEIVING DOOR 45","city":"TACOMA","zip":"98424","state":"WA"},{"no":"1528","name":"Genius of North America","addr":"320 Sunrise Ridge Road","city":"Brookings","zip":"57006","state":"SD"},{"no":"1529","name":"Ventanas JM / SCELI Logistics","addr":"465 Pan American Dr. \nSuite 1","city":"EL PASO","zip":"79907","state":"TX"},{"no":"1530","name":"CT International Aluminum Corp.","addr":"71 E Industry Ct.","city":"Deer Park","zip":"11729","state":"NY"},{"no":"1531","name":"KOHLTECH INTERNATIONAL LTD","addr":"583 MacElmon Road","city":"Debert","zip":"","state":"NS"},{"no":"1532","name":"Sunlight Window and Door Systems, Inc.","addr":"4705 Colliseum Way","city":"Oakland","zip":"94601","state":"CA"},{"no":"1535","name":"ROGER'S WINDOWS (CA)","addr":"10464 ALONDRA BLVD","city":"Bellflower","zip":"90706","state":"CA"},{"no":"1537","name":"GERKIN WINDOWS","addr":"5000 RHINO ROAD","city":"SIOUX CITY","zip":"68776","state":"NE"},{"no":"1538","name":"Synergy Windows and Doors, LLC","addr":"2909 Fallon Drive","city":"Sherman","zip":"75090","state":"TX"},{"no":"1539","name":"SE-GI","addr":"20521 TERESITA WAY","city":"LAKE FOREST","zip":"92630","state":"CA"},{"no":"1540","name":"SHWINCO ARCHITECTURAL PRODUCTS","addr":"171 JET SERVICES WAY","city":"DOTHAN","zip":"36303","state":"AL"},{"no":"1541","name":"Superior Mason Products","addr":"451 Industrial Lane","city":"Birmingham","zip":"35211","state":"AL"},{"no":"1542","name":"MIDWEST WINDOW & DOOR","addr":"2434 Commerce Blvd","city":"Mound","zip":"55364","state":"MN"},{"no":"1544","name":"GILWIN COMPANY","addr":"2354 LAPHAM DRIVE","city":"MODESTO","zip":"95354","state":"CA"},{"no":"1545","name":"BURRIS WINDOWS","addr":"4949 Amon Carter Blvd.,","city":"Fort Worth","zip":"76102","state":"TX"},{"no":"1546","name":"Novatech USA","addr":"","city":"","zip":"","state":""},{"no":"1551","name":"SEAL CRAFT MFG","addr":"1207 AIRPORT DRIVE","city":"SHREVEPORT","zip":"71107","state":"LA"},{"no":"1553","name":"Summit Window","addr":"7719 W. 60th Place","city":"Summit","zip":"60501","state":"IL"},{"no":"1554","name":"SEAWAY MANUFACTURING CORP","addr":"2250 East 33rd Street","city":"Erie","zip":"16510","state":"PA"},{"no":"1555","name":"VIWINCO","addr":"848 HEMLOCK RD","city":"MORGANTOWN","zip":"19543-8893","state":"PA"},{"no":"1557","name":"PLYGEM-SAC","addr":"3010 RAMCO STREET","city":"W.SACRAMENTO","zip":"95691","state":"CA"},{"no":"1558","name":"Texan Windows","addr":"18104 Foust Drive","city":"Buda","zip":"78610","state":"TX"},{"no":"1559","name":"SEVEN D IND (HOLLIDAYSBURG)","addr":"1001 LOOP ROAD","city":"HOLLIDAYSBURG","zip":"16648","state":"PA"},{"no":"1561","name":"National Window Associates","addr":"11333 91st Ave. N","city":"Maple Grove","zip":"55369","state":"MN"},{"no":"1563","name":"Craft Bilt MFG.","addr":"53 Souderton-Hatfield Pike","city":"Souderton","zip":"18964","state":"PA"},{"no":"1564","name":"OX Glass LLC","addr":"2764 E. Ranch Road","city":"Eagle Mountain","zip":"84005","state":"UT"},{"no":"1565","name":"SHAPES UNLIMITED INC","addr":"ROUTE 50","city":"ELLENBORO","zip":"26346","state":"WV"},{"no":"1565","name":"SHAPES UNLIMITED INC","addr":"590 EAST WESTERN RESERVE ROAD","city":"YOUNGSTOWN","zip":"44514","state":"OH"},{"no":"1566","name":"EXTRUSION PVC ROYALBEC INC","addr":"","city":"","zip":"","state":""},{"no":"1567","name":"Peak Windows","addr":"115 N 800 W","city":"Hyde Park","zip":"84318","state":"UT"},{"no":"1568","name":"QUANEX SCREENS LLC (PARIS IL)","addr":"2009 SOUTH MAIN ST\nREAR BLDG","city":"PARIS","zip":"61944","state":"IL"},{"no":"1568","name":"QUANEX SCREENS LLC (PARIS IL)","addr":"13323 Illinois Hwy 133","city":"Paris","zip":"61944","state":"IL"},{"no":"1569","name":"Revolution Window Systems","addr":"1710 Edison Highway","city":"Baltimore","zip":"21213","state":"MD"},{"no":"1570","name":"SULLIVAN & ASSOCIATES SALES","addr":"","city":"","zip":"","state":""},{"no":"1572","name":"CRYSTAL PACIFIC WINDOW","addr":"1850 ATLANTA AVE","city":"Riverside","zip":"92501","state":"CA"},{"no":"1574","name":"SHOWCASE WINDOWS","addr":"4902 GULF FREEWAY","city":"HOUSTON","zip":"77023","state":"TX"},{"no":"1574","name":"SHOWCASE WINDOWS","addr":"1702 Cullen Blvd.","city":"HOUSTON","zip":"77023","state":"TX"},{"no":"1574","name":"SHOWCASE WINDOWS","addr":"12613 Citypark Dr.\nSuite 100","city":"Missouri City","zip":"77489","state":"TX"},{"no":"1578","name":"HARRY G BARR COMPANY","addr":"6500 SOUTH ZERO","city":"FORT SMITH","zip":"72903","state":"AR"},{"no":"1579","name":"SOFT-LITE GORELL LLC","addr":"","city":"","zip":"","state":""},{"no":"1580","name":"Boyd Aluminum Mfg. Co.","addr":"PO Box 1563","city":"Springfield","zip":"65802","state":"MO"},{"no":"1581","name":"SILVERLINE BUILDING PROD (GA)","addr":"1800 WESTFORK DR","city":"LITHIA SPRINGS","zip":"30122-1559","state":"GA"},{"no":"1582","name":"CLEARVIEW WINDOW","addr":"284 N.CLINTON ST","city":"East Orange","zip":"07017","state":"NJ"},{"no":"1584","name":"SILVERLINE BUILDING PROD (IL)","addr":"16801 EXCHANGE AVE.\nSILVERLINE MIDWEST","city":"LANSING","zip":"60438","state":"IL"},{"no":"1586","name":"Energy Shield Windows & Doors","addr":"330 S 75th Ave.","city":"Phoenix","zip":"85043","state":"AZ"},{"no":"1588","name":"QUANEX SCREENS LLC (WV)","addr":"149 19TH STREET","city":"PARKSBURG","zip":"26101","state":"WV"},{"no":"1589","name":"Clera Windows and Doors","addr":"31 Pennsly Vania Ave.","city":"Concord","zip":"","state":"ON"},{"no":"1590","name":"Andersen (AZ)","addr":"4395 S Cotton Lane\nDocks 2-6","city":"Goodyear","zip":"85338","state":"AZ"},{"no":"2263","name":"Cascade Window (WA)","addr":"","city":"","zip":"","state":""},{"no":"2265","name":"COLUMBIA INDUSTRIES INC KS","addr":"429 EAST MCPHERSON ST.","city":"LINDSBORG","zip":"67456","state":"KS"},{"no":"2266","name":"COLUMBIA INDUSTRIES INC MO","addr":"1600 N. Jackson Avenue","city":"Kansas City","zip":"64120","state":"MO"},{"no":"2267","name":"Fen-Tech / BGroup 3, Inc.","addr":"1510 N. 5th St.","city":"Superior","zip":"54880","state":"WI"},{"no":"2277","name":"JELD-WEN WINDOWS & DOORS (CA)","addr":"2750 PROGRESS STREET","city":"VISTA","zip":"92081-8449","state":"CA"},{"no":"2279","name":"KRESTMARK WINDOWS/Boral","addr":"","city":"","zip":"","state":""},{"no":"2282","name":"Extrusions Unlimited LLC","addr":"3057 William Flynn Highway","city":"Slippery Rock","zip":"16057","state":"PA"},{"no":"2283","name":"MILGARD WINDOWS & DOOR-OR","addr":"20789 SW 115TH AVE","city":"Tualatin","zip":"97062-6860","state":"OR"},{"no":"2299","name":"Comfort Craft Sales, Inc.","addr":"9505 NW 108th Ave.","city":"Miami","zip":"33178","state":"FL"},{"no":"2301","name":"Uzor Windows & Doors Inc.","addr":"1701 Shepherd St. E.","city":"Windsor","zip":"N8Y 1T4","state":"ON"},{"no":"2302","name":"Monogram Windows & Doors, Inc","addr":"750 S. Powerline Rd., Suite G","city":"Deerfield Beach","zip":"33422","state":"FL"},{"no":"2303","name":"Renaissance Windows & Doors, Inc.","addr":"13340 International Parkway","city":"Jacksonville","zip":"32202","state":"FL"},{"no":"2304","name":"Compozit Home Systems","addr":"5611 Fern Valley Rd.","city":"Louisville","zip":"40228","state":"KY"},{"no":"2305","name":"Four Seasons Solar Products","addr":"5005 Veterans Memorial Hwy","city":"Holbrook","zip":"11741","state":"NY"},{"no":"2306","name":"Cascade Windows (AZ)","addr":"2225 S 75TH AVE STE 140","city":"Phoenix","zip":"85043-7478","state":"AZ"},{"no":"2307","name":"The Window Shoppe","addr":"2445 La Mirada Dr.","city":"Vista","zip":"92081","state":"CA"},{"no":"2308","name":"Guaranteed Exteriors Inc","addr":"2728 N. 2nd St.","city":"St. Charles","zip":"60175","state":"IL"},{"no":"2309","name":"New Image Window & Door","addr":"399F Enterprise St.","city":"Ocoee","zip":"34761","state":"FL"},{"no":"2309","name":"New Image Window & Door","addr":"353 Gordon Street","city":"Sanford","zip":"32771","state":"FL"},{"no":"2310","name":"Gill Window Company, Inc.","addr":"1813 PACIFIC AVE","city":"Cheyenne","zip":"82007-1001","state":"WY"},{"no":"2311","name":"Cascade Windows (CA)","addr":"1660 Tide Ct., Suite B","city":"Woodland","zip":"95776","state":"CA"},{"no":"2312","name":"Crown Window","addr":"2406 Aqua Vista Blvd.","city":"Fort Laurendale","zip":"33301","state":"FL"},{"no":"2313","name":"ATI WINDOWS","addr":"2417 S. 50th Ave","city":"Phoenix","zip":"85043","state":"AZ"},{"no":"2313","name":"ATI WINDOWS","addr":"1455 Columbia Ave.","city":"Riverside","zip":"92507","state":"CA"},{"no":"2314","name":"Minnkota Windows","addr":"2324 Main Ave West","city":"West Fargo","zip":"58078","state":"ND"},{"no":"2315","name":"Saloomey Construction Inc.","addr":"","city":"","zip":"","state":""},{"no":"2316","name":"Ridout Contractor Outlet of Fayetteville","addr":"","city":"","zip":"","state":""},{"no":"2317","name":"Euroclad Building Products","addr":"2490A Ross Rd.","city":"Kelowna","zip":"V1Z 1M1","state":"BC"},{"no":"2318","name":"Nordik Windows Inc.","addr":"104 Clement St.","city":"Vars","zip":"","state":"ON"},{"no":"2319","name":"LINDSAY WINDOWS (CA)","addr":"13510 Central Rd.","city":"Apple Valley","zip":"92307","state":"CA"},{"no":"2320","name":"Action Glass Inc.","addr":"1110 NE Pine Island Rd. #33","city":"Cape Coral","zip":"33909","state":"FL"},{"no":"2321","name":"Bedford Construction and Woodworking","addr":"45 Sherwood Terrace","city":"Old Saybrook","zip":"06475","state":"CT"},{"no":"2323","name":"St. Joe Hardware Company Inc.","addr":"201 Williams Avenue","city":"Port St. Joe","zip":"32456","state":"FL"},{"no":"2325","name":"Fancy Windows MFG","addr":"4661 Roper Rd NW","city":"Edmonton","zip":"T6B 3S5","state":"AB"},{"no":"2327","name":"North Glass Inc.","addr":"739 Bradfield Rd","city":"Houston","zip":"77002","state":"TX"},{"no":"2328","name":"All Weather Architectural Aluminum Inc.","addr":"777 Aldrige Rd.","city":"Vacaville","zip":"95688","state":"CA"},{"no":"2329","name":"Sunshine Rooms, Inc.","addr":"3333 North Mead","city":"Wichita","zip":"67219","state":"KS"},{"no":"2330","name":"Ozark Window MFG, LLC","addr":"3302 S. Hwy. E.","city":"Norwood","zip":"65717","state":"MO"},{"no":"2331","name":"Star Windows Corp.","addr":"11738 Ashworth St.","city":"Houston","zip":"77050","state":"TX"},{"no":"2332","name":"Screen Fab LLC","addr":"610 N. Wildwood Dr.","city":"Irving","zip":"75061","state":"TX"},{"no":"2333","name":"Orgain Building Supply Co. Inc.","addr":"65 Commerce Street","city":"Clarksville","zip":"37040","state":"TN"},{"no":"2335","name":"Elco De California SA de CV","addr":"2401 Portico Blvd.\nSuite #2","city":"Calexico","zip":"92231","state":"CA"},{"no":"2336","name":"Fenergic Inc.","addr":"7 Rue Thibault","city":"Warwick","zip":"J0A 1M0","state":"QC"},{"no":"2338","name":"Fox Windows & Glass","addr":"34 Keyes Avenue","city":"Samford","zip":"","state":"FL"},{"no":"2339","name":"Central Valley Glass & Screen","addr":"5854 88th St.","city":"Sacramento","zip":"95828","state":"CA"},{"no":"2341","name":"New Tech Exteriors Inc.","addr":"1123 Sandstone Ct.","city":"Aurora","zip":"60502","state":"IL"},{"no":"2342","name":"Home Pride Inc.","addr":"15100 Industrial Park Rd.","city":"Bristol","zip":"24202","state":"VA"},{"no":"2343","name":"Accent Sothwest Windows & Doors","addr":"470 Panamerican Frwy NE","city":"Albuquerque","zip":"87109","state":"NM"},{"no":"2344","name":"JELD-WEN WINDOWS & DOORS (Canada)","addr":"550 Munroe Avenue","city":"Winnipeg","zip":"R2K 4H3","state":"MB"},{"no":"2345","name":"Tri-State Wholesale Building Supplies, In","addr":"651 Evans St.","city":"Cincinnati","zip":"45204","state":"OH"},{"no":"2346","name":"Marlboro Windows & Doors Mfg. Ltd.","addr":"2370 Stevenage Drive","city":"Ottawa","zip":"","state":"ON"},{"no":"2347","name":"Valley View Windows","addr":"2111 Turkey Knob Road","city":"Marion","zip":"42064","state":"KY"},{"no":"2347","name":"Valley View Windows","addr":"294 Mt. Zion Church Rd.","city":"Marion","zip":"42064","state":"KY"},{"no":"2348","name":"Advent Windows & Doors","addr":"216 Gloria Dr.","city":"Springtown","zip":"76082","state":"TX"},{"no":"2349","name":"POLAR SEAL","addr":"625 CENTURY AVE., S.W.","city":"GRAND RAPIDS","zip":"49503","state":"MI"},{"no":"2350","name":"JAIDAN INDUSTRIES","addr":"16 CAPI LANE","city":"PORT WASHINGTON","zip":"11050","state":"NY"},{"no":"2351","name":"Panoramic Window & Door Systems, Inc.","addr":"712 Sergeantsville Rd.","city":"Stockton","zip":"08559","state":"NJ"},{"no":"2353","name":"North End Weatherstripping","addr":"742 Erin St.","city":"Winnipeg","zip":"R3G 2W4","state":"MB"},{"no":"2354","name":"Star Holdings Group","addr":"265 Hobson St","city":"Smithville","zip":"37166","state":"TN"},{"no":"2355","name":"Morfe Windows, LLC","addr":"432 Morgera Loop","city":"Mountain Pine","zip":"71956","state":"AR"},{"no":"2357","name":"Windows For Less","addr":"10015 County Road 180","city":"Carthage","zip":"64836","state":"MO"},{"no":"2358","name":"Aeroseal Windows & Storefront","addr":"8350 Bristol Ct.","city":"Jessup","zip":"20794","state":"MD"},{"no":"2359","name":"Breezee Apartment Supply Inc.","addr":"1345 North Dynamics St.,","city":"Anaheim","zip":"92801","state":"CA"},{"no":"2360","name":"Rusco Window Company Inc.","addr":"411 40th St. SO","city":"Fargo","zip":"58103","state":"ND"},{"no":"2361","name":"A & A Windows Manufacturing Inc","addr":"51 Frost St.","city":"Westbury","zip":"11590","state":"NY"},{"no":"2362","name":"Cascade Windows (CO)","addr":"","city":"","zip":"","state":""},{"no":"2363","name":"Drexel Building Supply - Berlin WI","addr":"","city":"","zip":"","state":""},{"no":"2365","name":"Drexel Building Supply - Columbus WI","addr":"200 Hall Road","city":"Columbus","zip":"53925","state":"WI"},{"no":"2369","name":"Tracy Corners IG","addr":"W4190 County Rd. E","city":"Bonduel","zip":"54107","state":"WI"},{"no":"2370","name":"Dealers Supply & Lumber Co.","addr":"105 Airport Rd.","city":"Greenville","zip":"29607","state":"SC"},{"no":"2371","name":"Berks Ridge Company Enterprises, Inc","addr":"316 Ruth Rd.","city":"Harleysville","zip":"19438","state":"PA"},{"no":"2372","name":"Laclede Windows, LLC","addr":"27451 Hwy 32","city":"Lebanon","zip":"65536","state":"MO"},{"no":"2374","name":"Bozarth Contractors","addr":"1251 San Christopher Dr.","city":"Dunedin","zip":"34698","state":"FL"},{"no":"2375","name":"Alpha Building Center","addr":"8270 W 1350 N","city":"Nappanee","zip":"46550","state":"IN"},{"no":"2377","name":"Dale of Alabama","addr":"3637 3rd Ave. South","city":"Birmingham","zip":"35222","state":"AL"},{"no":"2377","name":"Dale of Alabama","addr":"2930 Burgundy Street","city":"New Orleans","zip":"70117","state":"LA"},{"no":"2379","name":"American Window Manufacturing","addr":"12820 Industrial Rd., Suite A","city":"Houston","zip":"77015","state":"TX"},{"no":"2380","name":"A1 On Track Sliding Door","addr":"1600 Dell Ave.","city":"Campbell","zip":"95008","state":"CA"},{"no":"2382","name":"Vezina et Fils Industriel inc","addr":"400 Rue Principal","city":"Saint Prime","zip":"G8J 1R8","state":"QC"},{"no":"2383","name":"UNLIMITED INC","addr":"7277 SOUTH 10TH STREET","city":"Oak Creek","zip":"53154","state":"WI"},{"no":"2384","name":"Reconstruction Experts Inc.","addr":"5310 Vivian St.","city":"Arvada","zip":"80002","state":"CO"},{"no":"2388","name":"Thermo Seal Vinyl Products, LLC","addr":"20309 Hwy M","city":"Brookfield","zip":"64628","state":"MO"},{"no":"2391","name":"Gild-N-Son Manufacturing & Sales","addr":"328 Belleville Tpk","city":"Kearny","zip":"07032","state":"NJ"},{"no":"2394","name":"Keylink Fencing and Railings, Inc.","addr":"710 W Main St.","city":"New Holland","zip":"17557","state":"PA"},{"no":"2395","name":"Rawson Builders Supply of Texas Inc.","addr":"1121 Fulwiler Road","city":"Abilene","zip":"79603","state":"TX"},{"no":"2395","name":"Rawson Builders Supply of Texas Inc.","addr":"2344 Franklin Dr.","city":"Fort Worth","zip":"76106","state":"TX"},{"no":"2396","name":"Moyes Glass & Supply","addr":"1590 Wall Ave.","city":"Ogden","zip":"84404","state":"UT"},{"no":"2397","name":"Heartland Pella","addr":"2704 Plant St.","city":"Rapid City","zip":"57702","state":"SD"},{"no":"2398","name":"Accent Products Inc.","addr":"994 Glendale Ave. #3","city":"Spark","zip":"89431","state":"NV"},{"no":"2400","name":"Hartwick Vinyl Windows","addr":"2502 220th Avenue","city":"Delhi","zip":"52223","state":"IA"},{"no":"2403","name":"lindsay","addr":"","city":"","zip":"","state":""},{"no":"2404","name":"Window and Door Components","addr":"PO Box 1544","city":"Okotoks","zip":"","state":"AB"},{"no":"2406","name":"Euro-Wall Systems, LLC","addr":"P.O. Box 8007","city":"North Port","zip":"34290","state":"FL"},{"no":"2408","name":"Wilson Lumber Company","addr":"4818 Meridian St. N.","city":"Huntsville","zip":"35801","state":"AL"},{"no":"2409","name":"Boyer Hill Military Housing","addr":"4114 B Charlestown Loop","city":"Hill Air Force Base","zip":"84056","state":"UT"},{"no":"2410","name":"Progressive Assets LLC","addr":"298 State Route 66","city":"Leechburg","zip":"15656","state":"PA"},{"no":"2411","name":"Royal Windows Mfg Corp","addr":"1769 5th Ave","city":"Bay Shore","zip":"11706","state":"NY"},{"no":"2412","name":"Ricardo's Glass and Windows","addr":"1248 N. Mt. Vernon Ave.","city":"San Bernardino","zip":"92411","state":"CA"},{"no":"2413","name":"Exide Windows & Doors LLC","addr":"2005 MCDANIEL  DR., STE 100","city":"CARROLLTON","zip":"75006","state":"TX"},{"no":"2414","name":"Lunar Windows and Doors","addr":"14715 131 Ave. NW","city":"Edmonton","zip":"T5L 4L8","state":"AB"},{"no":"2415","name":"2 Hour Glass LLC","addr":"1332 Street Rd","city":"Bensalem","zip":"19020","state":"PA"},{"no":"2416","name":"Midwest Premier Construction, Inc.","addr":"10675 Timberview Drive","city":"Aurora","zip":"47001","state":"IN"},{"no":"2416","name":"Midwest Premier Construction, Inc.","addr":"26W286 Blackhawk Dr","city":"Wheaton","zip":"60189","state":"IL"},{"no":"2417","name":"MP Windows Inc.","addr":"407 River Heights Circle","city":"Anderson","zip":"29621","state":"SC"},{"no":"2419","name":"Thermal Windows","addr":"8808 Empress Row","city":"Dallas","zip":"75247","state":"TX"},{"no":"2421","name":"KINRO PLANT 096 (MI)","addr":"1103 Pearl St.","city":"Chesaning","zip":"48616-1007","state":"MI"},{"no":"2422","name":"Ocean Doors and Windows","addr":"7875 NW 77th Ave.","city":"Medley","zip":"33166","state":"FL"},{"no":"2423","name":"Ace Hardware & More","addr":"401 N State St.","city":"Knob Noster","zip":"65336","state":"MO"},{"no":"2550","name":"GLASS AMERICA WINDOW MFG. INC. RI","addr":"2 Esmond Street","city":"Smithfield","zip":"02917","state":"RI"},{"no":"2553","name":"Builders Supply SC","addr":"501 S. French Street","city":"Lancaster","zip":"29720","state":"SC"},{"no":"2554","name":"Chinook Glass & Screen Ltd.","addr":"321 16th Avenue NW","city":"Calgary","zip":"T2M 0H9","state":"AB"},{"no":"2556","name":"Winvent Windows","addr":"2213 Jayhawk Rd,","city":"Fort Scott","zip":"66071","state":"KS"},{"no":"2557","name":"APS Holdings dba APS Windows & Doors","addr":"1402 N. 25th St.","city":"Tampa","zip":"33605","state":"FL"},{"no":"2558","name":"JELD-WEN WINDOWS & DOORS (WI)","addr":"811 Factory St.","city":"Hawkins","zip":"54530","state":"WI"},{"no":"2560","name":"CGI Windows and Doors","addr":"3780 W. 104 St.","city":"Hialeah","zip":"33010","state":"FL"},{"no":"2561","name":"ABI Windows","addr":"718 Polaris Dr.","city":"Abilene","zip":"79603","state":"TX"},{"no":"2562","name":"Acadian Windows and Siding, LLC","addr":"119 Alpha Drive","city":"Destrehan","zip":"70047","state":"LA"},{"no":"2564","name":"FLP Enterprises LLC","addr":"16708 Picadilly Ct., Suite 117","city":"Round Rock","zip":"78664","state":"TX"},{"no":"2565","name":"North Star Window","addr":"62843 County Hwy 50","city":"Wadena","zip":"56482","state":"MN"},{"no":"2566","name":"Window Smart MFG LLC","addr":"5922 ALBERT PIKE RD.","city":"ROYAL","zip":"71968","state":"AR"},{"no":"2566","name":"Window Smart MFG LLC","addr":"5930 Albert Pike Rd.","city":"ROYAL","zip":"71968","state":"AR"},{"no":"2567","name":"Benmar Custom Windows","addr":"27455 Burt Rd.","city":"Utica","zip":"55979","state":"MN"},{"no":"2569","name":"Daltex Glass","addr":"11419 Ferrell Dr.\nSuite 108","city":"Farmers Branch","zip":"75234","state":"TX"},{"no":"2570","name":"Los Angeles Bright Windows and Doors, Inc","addr":"11668 Kismet Ave.","city":"Sylmar","zip":"91342","state":"CA"},{"no":"2571","name":"Air Master Group","addr":"PO Box 2097","city":"Barceloneta","zip":"00617","state":""},{"no":"2572","name":"GAS Hardware","addr":"4036 N. 29th Ave.","city":"Hollywood","zip":"33019","state":"FL"},{"no":"2575","name":"Bachman's Roofing, Building & Remodeling","addr":"36 S. Elm St.","city":"Wernersville","zip":"19565","state":"PA"},{"no":"2576","name":"AJ Glass & Window Repair LLC","addr":"PO Box 680916","city":"Houston","zip":"77002","state":"TX"},{"no":"2578","name":"Winchester Industries","addr":"P.O. Box 160","city":"500 Leech Ave","zip":"","state":"PA"},{"no":"2580","name":"Thermal Gard Building Products, Inc","addr":"PO Box 140","city":"Punxsutawney","zip":"15767","state":"PA"},{"no":"2581","name":"Beacon Building Products","addr":"3300 Rock Island Place","city":"Bismarck","zip":"58501","state":"ND"},{"no":"2582","name":"Aurora Doors and Windows Corp","addr":"105 E. Marquardt. Dr.","city":"Wheeling","zip":"60090","state":"IL"},{"no":"2583","name":"MGM INDUSTRIES","addr":"","city":"","zip":"","state":""},{"no":"2584","name":"Van Dies Engineering, Inc.","addr":"PO Box 408","city":"Roseville","zip":"48066","state":"MI"},{"no":"2585","name":"Hawk Window","addr":"2 Stadium Dr.","city":"Sugar Land","zip":"77478","state":"TX"},{"no":"2586","name":"Sellmore Industries Inc.","addr":"815 Smith St.","city":"Buffalo","zip":"14201","state":"NY"},{"no":"2587","name":"Riverside Window and Door Company","addr":"924 9th Ave.","city":"Columbus","zip":"31901","state":"GA"},{"no":"2588","name":"Altitude Windows","addr":"901 Travis St.","city":"Mission","zip":"78572","state":"TX"},{"no":"2589","name":"Peerless Products Inc.","addr":"2403 S. Main St.","city":"Fort Scott","zip":"","state":"TX"},{"no":"2590","name":"Avanti Windows & Doors TX","addr":"2350 Crist Road","city":"Garland","zip":"75040","state":"TX"},{"no":"2590","name":"Avanti Windows & Doors TX","addr":"933 Hensley Lane","city":"Wylie","zip":"75098","state":"TX"},{"no":"2591","name":"Apex Windows Werks Inc.","addr":"7813 1st Pl.","city":"Oakwood Village","zip":"","state":"OH"},{"no":"2592","name":"Midwest Window & Door Corp.","addr":"3357 W. Waddill St.","city":"Springfield","zip":"65802","state":"MO"},{"no":"2593","name":"Grubb Lumber Company, Inc.","addr":"PO Box 627","city":"Wilmington","zip":"19801","state":"DE"},{"no":"2594","name":"Complete General Contracting Group","addr":"1910 Barber Rd.","city":"Sarasota","zip":"34231","state":"FL"},{"no":"2595","name":"440 Portes et Fenetres Inc.","addr":"565 Lindbergh","city":"Laval","zip":"","state":"QC"},{"no":"2596","name":"Southwest Home Products LLC","addr":"PO Box 91925","city":"Albuquerque","zip":"87102","state":"NM"},{"no":"2597","name":"Andersen (Cottage Grove)","addr":"100 Fourth Ave. North","city":"Bayport","zip":"55003","state":"MN"},{"no":"2598","name":"Austin Sliding Door & Window Repair","addr":"517 Doe Whisper Way","city":"Austin","zip":"78701","state":"TX"},{"no":"2599","name":"Byler's Superior Windows","addr":"29253 State Highway 27","city":"Guys Mills","zip":"16327","state":"PA"},{"no":"2600","name":"Earthwise of Kansas City","addr":"1414 E.19th St.","city":"Kansas City","zip":"64101","state":"MO"},{"no":"2601","name":"Gamco Corporation","addr":"131-10 Maple Avenue","city":"NY","zip":"","state":"NY"},{"no":"2602","name":"Kalahari Development LLC","addr":"PO Box 590","city":"Wisconsin Dells","zip":"53965","state":"WI"},{"no":"2603","name":"Arch Tech of North Carolina, Inc.","addr":"PO Box 670","city":"Rockwell","zip":"28138","state":"NC"},{"no":"2604","name":"Innovations Manufacturing, Inc.","addr":"4555 Grape Street","city":"Denver","zip":"80202","state":"CO"},{"no":"2605","name":"HFT Group LLC","addr":"3777 SE Naef Road","city":"OR","zip":"","state":"OR"},{"no":"2607","name":"Walsh Building Products","addr":"6430 Grand Avenue","city":"Duluth","zip":"55802","state":"MN"},{"no":"2609","name":"Durabuilt Windows & Doors","addr":"10920-178 Street","city":"Edmonton","zip":"T5S 1R7","state":"AB"},{"no":"2610","name":"My Windows","addr":"3625 County Road 326","city":"Flat Rock","zip":"35966-5424","state":"AL"},{"no":"2611","name":"All States Windows LLC","addr":"2 Research Dr.","city":"Shelton","zip":"06484-6225","state":"CT"},{"no":"2612","name":"Industria Disenadora de Autopartes, S.A.","addr":"Carr. El Salto 410","city":"Guadalajara","zip":"45694","state":"Jal"},{"no":"2612","name":"Industria Disenadora de Autopartes, S.A.","addr":"Carretera El Salto - El Verde NO 410 INT. 15, Plataforma Industrial Park","city":"El Salto","zip":"45686","state":"Jal"},{"no":"2613","name":"Isothermic Inc.","addr":"370 Chem. du Mont Granit O","city":"Thetford Mines","zip":"G6G 5R7","state":"Quebec"},{"no":"2613","name":"Isothermic Inc.","addr":"370 Chem. du Mont Granit O","city":"Thetfo Mines","zip":"G6G 5R7","state":"QC"},{"no":"2614","name":"Shop Vac USA, LLC","addr":"2323 Reach Rd.","city":"Williamsport","zip":"17701","state":"PA"},{"no":"2615","name":"Industria Disenadora de Autopartes, S.A. - El Salto","addr":"Carretera El Salto - El Verde NO 410\nINT. 15, Plataforma Industrial Park","city":"El Salto","zip":"45686","state":"Jal"},{"no":"2615","name":"Industria Disenadora de Autopartes, S.A. - Guadalajara","addr":"Carr El Salto 410,\nEl Verde","city":"Guadalajara","zip":"45694","state":"Jal"},{"no":"2615","name":"Real Truck -TX","addr":"13120 Spivey Rd.","city":"Laredo","zip":"78045","state":"TX"},{"no":"2616","name":"Eastern Architectural Systems","addr":"M  W Manufactures Inc\n5020 Weston Parkway","city":"Cary","zip":"","state":""},{"no":"2617","name":"Demers Glass, LLC","addr":"7712 W. Golden Lane","city":"Peoria","zip":"85345","state":"AZ"},{"no":"2618","name":"Vinylbilt Windows and Doors 2021, Inc.","addr":"3333 Langstaff Rd.","city":"Concord","zip":"","state":"ON"},{"no":"2619","name":"KP Building Products","addr":"300 McDonald Blvd.","city":"Alexandria","zip":"","state":"ON"},{"no":"2620","name":"NTS Development Company","addr":"P.O. Box 36699","city":"Charlotte","zip":"28202","state":"NC"},{"no":"2621","name":"Avanti Windows & Doors NV","addr":"751 W Warm Springs Rd. Ste. 135","city":"Henderson","zip":"89011","state":"NV"},{"no":"2622","name":"Graber Manufacturing LLC","addr":"12836 Cuba Rd.","city":"Grabill","zip":"46741","state":"IN"},{"no":"2623","name":"QLine Windows & Doors Inc.","addr":"589 Barton St.","city":"Stoney Creek","zip":"","state":"ON"},{"no":"2624","name":"RAMCO","addr":"9751 Erwin Ave.","city":"Detroit","zip":"48201","state":"MI"},{"no":"2625","name":"Home Time Windows & Doors","addr":"1081 West 9th Street","city":"Upland","zip":"91784","state":"CA"},{"no":"2626","name":"Countryside Windows","addr":"W 844 Swan Rd.","city":"Spencer","zip":"54479","state":"WI"},{"no":"2627","name":"Win-Curve Windows, LLC","addr":"18060 South State Hwy 78","city":"Leonard","zip":"75452","state":"TX"},{"no":"2628","name":"MILGARD WINDOWS & DOORS-AZ","addr":"7555 E STATE ROUTE 69","city":"Prescott Valley","zip":"86314-9468","state":"AZ"},{"no":"2629","name":"Merrill Millwork","addr":"1300 W. Taylor St.","city":"Merrill","zip":"54452","state":"WI"},{"no":"2630","name":"Sierra Pacific Windows- Phenix City","addr":"300 General Colin Powell Pkwy","city":"Phenix City","zip":"36867","state":"AL"},{"no":"2631","name":"Green Mountain Window & Door Co.","addr":"Green Mountain Window & Door Co.","city":"Rutland","zip":"05701","state":"VT"},{"no":"2641","name":"Das Fensterhaus","addr":"8717 S. Broadway Rd.","city":"Hastings","zip":"","state":""},{"no":"2643","name":"Graber Therm-o-Loc Windows","addr":"9058 E. 500 N","city":"Montgomery","zip":"47558","state":"IN"},{"no":"2644","name":"Finestra Window and Door","addr":"5 Trautman Industrial Ct.","city":"Sainte Genevieve","zip":"","state":""},{"no":"2645","name":"Kinsinger's Custom Windows","addr":"11410 Castle Hwy.","city":"Pleasureville","zip":"","state":""},{"no":"2646","name":"Phos Window","addr":"1201 Echols Dr.","city":"Fort Payne","zip":"","state":""},{"no":"2658","name":"Therm-O-Loc Window Factory","addr":"40809 265th Street","city":"Ethan","zip":"","state":""},{"no":"2662","name":"Alloy Fasteners Inc.","addr":"15 Amflex Dr","city":"Cranston","zip":"","state":""},{"no":"2667","name":"Lumex Windows","addr":"3144 Venture Dr., Suite 500","city":"","zip":"","state":""},{"no":"883","name":"AFFINITY BUILDING SYSTEMS","addr":"62 MURRAY BLVD","city":"LAKELAND","zip":"31635","state":"GA"},{"no":"884","name":"ABC Millwork","addr":"18800 West 78th St.\nPO Box 0950","city":"Chanhassen","zip":"55317","state":"MN"},{"no":"885","name":"SILVERLINE BUILDING PROD (N BRUNSWICK)","addr":"1 SILVERLINE DR","city":"NORTH BRUNSWICK","zip":"08902-3397","state":"NJ"},{"no":"887","name":"MARLIN WINDOWS INC","addr":"5414 E BROADWAY AVENUE","city":"Spokane","zip":"99201","state":"WA"},{"no":"888","name":"Barton Kramer Inc.","addr":"PO Box 520367","city":"Miami","zip":"33101","state":"FL"},{"no":"889","name":"SILVERLINE BUILDING PROD (OH)","addr":"2549 INNOVATION DR","city":"MARION","zip":"43302-8721","state":"OH"},{"no":"890","name":"PANORAMA WINDOWS LTD","addr":"767 EAST 132ND ST","city":"Bronx","zip":"10451","state":"NY"},{"no":"891","name":"Long Pond Vinyl Products","addr":"10188 Pembroke Rd.","city":"Pembroke","zip":"42266","state":"KY"},{"no":"892","name":"A A WINDOWS","addr":"2990 JEROME AVENUE","city":"BRONX","zip":"10468","state":"NY"},{"no":"894","name":"TM WINDOW & DOOR LLC","addr":"1543 N Powerline Rd.","city":"POMPANO BEACH","zip":"33069","state":"FL"},{"no":"898","name":"INTEX Millwork","addr":"6132 Old Harding Highway","city":"Mays Landing","zip":"08330","state":"NJ"},{"no":"898","name":"Tecniplast -- INTEX Millwork","addr":"11880 57th Avenue","city":"Montreal","zip":"H1E 2M7","state":"QC"},{"no":"899","name":"HK/HOME KIM WINDOWS","addr":"610B Pine Tree Rd","city":"Oxford","zip":"27656","state":"NC"},{"no":"900","name":"SIMONTON (IL)","addr":"13263 ILLINOIS HWY 133","city":"PARIS","zip":"61944","state":"IL"},{"no":"902","name":"Muhler Company Inc.- Warehouse","addr":"1930 Hanahan Rd. - 1400A","city":"North Charleston","zip":"29406","state":"SC"},{"no":"903","name":"ABC WINDOW CONTRACTORS","addr":"803 VACA VALLEY PARKWAY STE C","city":"VACAVILLE","zip":"95688","state":"CA"},{"no":"904","name":"SIMONTON (CA)","addr":"2019 E MONTE VISTA AVE","city":"VACAVILLE","zip":"95688-3100","state":"CA"},{"no":"906","name":"HOFF WINDOWS INC","addr":"4307 INDIAN SPRINGS DRIVE","city":"WAUSAU","zip":"54401","state":"WI"},{"no":"907","name":"SIMONTON (WV) Pennsboro","addr":"1 COCHRAN AVENUE","city":"PENNSBORO","zip":"26415","state":"WV"},{"no":"908","name":"WEATHER SHIELD","addr":"1201 ADAMS AVE E","city":"Ladysmith","zip":"54848","state":"WI"},{"no":"908","name":"WEATHER SHIELD","addr":"ONE WEATHER SHIELD PLAZA","city":"MEDFORD","zip":"54451","state":"WI"},{"no":"909","name":"Novatech Canada Inc.","addr":"100,181E RUE","city":"Beauceville","zip":"G5X 2T1","state":"QC"},{"no":"909","name":"Novatech Canada Inc.","addr":"Unit 17, 5505, 72e Avenue SE","city":"Calgary","zip":"T2C 3C4","state":"AB"},{"no":"910","name":"PAL MFG CORP","addr":"","city":"","zip":"","state":""},{"no":"914","name":"HOME GUARD INDUSTRIES (IN)","addr":"13101 SO. MAIN STREET","city":"GRABILL","zip":"46741","state":"IN"},{"no":"915","name":"MIDWAY WINDOWS & DOORS, INC. (CHICAGO)","addr":"6750 BELT CIRCLE DRIVE","city":"BEDFORD","zip":"60638","state":"IL"},{"no":"915","name":"MIDWAY WINDOWS & DOORS, INC. (CHICAGO)","addr":"6748 S SAYRE AVE","city":"Chicago","zip":"60638-4725","state":"IL"},{"no":"917","name":"Comfort Line Ltd.","addr":"5500 Enterprise Blvd.","city":"Toledo","zip":"43604","state":"OH"},{"no":"919","name":"Vinyl Craft Window LLC","addr":"2656 W. FINKLE RD","city":"McBain","zip":"49657","state":"MI"},{"no":"920","name":"SOUTH SENECA","addr":"10708 MILLERS RD","city":"LYDONVILLE","zip":"14098","state":"NY"},{"no":"920","name":"SOUTH SENECA","addr":"1585 YALE FARM RD","city":"ROMULUS","zip":"14541","state":"NY"},{"no":"922","name":"EW7 Products LLC","addr":"6930 N Lakewood Ave","city":"Tulsa","zip":"74117","state":"OK"},{"no":"924","name":"Circle Glass","addr":"15000 Linwood Street","city":"Detroit","zip":"48238","state":"MI"},{"no":"925","name":"IDEAL WINDOWS","addr":"100 W 7TH ST","city":"BAYONNE","zip":"07002-1133","state":"NJ"},{"no":"925","name":"IDEAL WINDOWS","addr":"27 KENNEDY BLVD.","city":"BAYONNE","zip":"07002","state":"NJ"},{"no":"926","name":"LINDSAY WINDOWS (IL)","addr":"50 South Street","city":"North Aurora","zip":"60542","state":"IL"},{"no":"928","name":"SOUTHWEST VINYL WINDOWS INC","addr":"6250 BALTIMORE PIKE","city":"YEADON","zip":"19050","state":"PA"},{"no":"929","name":"NORTH EAST WINDOWS USA, INC","addr":"1 KEES PLACE","city":"MERRICK","zip":"11566","state":"NY"},{"no":"931","name":"ADVANCED WINDOW CORP","addr":"4935 W. LE MOYNE STREET","city":"CHICAGO","zip":"60651","state":"IL"},{"no":"932","name":"SPECIALTY WHOLESALE SUPPLY","addr":"101 LINUS ALLAIN AVE","city":"GARDNER","zip":"01440","state":"MA"},{"no":"935","name":"IMPERIAL WINDOW MANUFACTURING  LLC","addr":"2819 FARRISVIEW BLVD","city":"MEMPHIS","zip":"38118","state":"TN"},{"no":"936","name":"Ringer Windows Inc.","addr":"205 Mustang Cove","city":"Taylor","zip":"76574","state":"TX"},{"no":"937","name":"Sierra Pacific Windows-Medford","addr":"520 S Whelen Ave.","city":"Medford","zip":"54451","state":"WI"},{"no":"939","name":"ELITE WINDOW SOLUTIONS LLC","addr":"1720 DOUTHIT CT","city":"POWHATAN","zip":"23139","state":"VA"},{"no":"941","name":"PLYGEM WINDOWS (CA)","addr":"7140 40 St SE","city":"Calgary","zip":"T2C 2B6","state":"AB"},{"no":"941","name":"PLYGEM PACIFIC WINDOWS, CORONA","addr":"235 RADIO ROAD","city":"CORONA","zip":"92879-1725","state":"CA"},{"no":"946","name":"DURA-LITE ALUMINUM PRODUCTS INC","addr":"1121 CAMERON STREET","city":"Lafayette","zip":"70501","state":"LA"},{"no":"947","name":"Coeur d' Alene Window Company LLC","addr":"115 N. Sycamore St.","city":"Sycamore","zip":"99202","state":"WA"},{"no":"948","name":"ALENCO (TX) PREMIER SASH & DOOR","addr":"PO BOX 3667","city":"Cary","zip":"27511","state":"NC"},{"no":"949","name":"Clarity Windows and Doors Inc.","addr":"6830 North Eldridge Parkway","city":"Houston","zip":"77002","state":"TX"},{"no":"950","name":"STERGIS ALUMINUM","addr":"79 WALTON ST","city":"ATTLEBORO","zip":"02703-1418","state":"MA"},{"no":"952","name":"Ritescreen-TX","addr":"787 E Village Pkway","city":"Van Alstyne","zip":"75495","state":"TX"},{"no":"953","name":"ALENCO (GA)","addr":"319 DIVIDEND DR.","city":"PEACHTREE CITY","zip":"30269","state":"GA"},{"no":"954","name":"STERLING WINDOW SYSTEM","addr":"6705 PLEASANT RIDGE RD","city":"KNOXVILLE","zip":"37921","state":"TN"},{"no":"955","name":"BEDS BY GEORGE","addr":"109 S. 14th Ave, Bldg 2\nAttn:  Jerry Miller","city":"Middlebury","zip":"46540","state":"IN"},{"no":"956","name":"Jones Paint & Glass Inc.","addr":"1250 W 100 N","city":"Provo","zip":"84601","state":"UT"},{"no":"957","name":"ALENCO (TX)","addr":"615 W CARSON ST","city":"BRYAN","zip":"77801","state":"TX"},{"no":"958","name":"INTERSTATE BUILDING MATERIALS INC","addr":"3000 N. TOWNSHIP BLVD","city":"PITTSTON","zip":"18640","state":"PA"},{"no":"959","name":"JV Screens Inc.","addr":"18584 Valley Blvd.","city":"Bloomington","zip":"92316","state":"CA"},{"no":"960","name":"STRY BUC INDUSTRIES","addr":"4181 WEST 108 STREET\nSUITE 7","city":"HIALEAH","zip":"33018","state":"FL"},{"no":"960","name":"STRY BUC INDUSTRIES","addr":"8076 N.W. 74TH AVE","city":"MEDLEY","zip":"33166","state":"FL"},{"no":"960","name":"STRY BUC INDUSTRIES","addr":"2006 ELMWOOD AVENUE\nBUILDING 102C","city":"SHARON HILL","zip":"19079","state":"PA"},{"no":"960","name":"STRY BUC INDUSTRIES","addr":"850 Meredith Way","city":"Sparks","zip":"89431","state":"NV"},{"no":"960","name":"STRY BUC INDUSTRIES","addr":"6250 Baltimore Ave","city":"Yeadon","zip":"19050-2700","state":"PA"},{"no":"961","name":"POCAHONTAS ALUMINUM CO","addr":"","city":"","zip":"","state":""},{"no":"962","name":"Great Plains Pult Inc. dba Nova","addr":"1327 Park Ave.","city":"Omaha","zip":"68105","state":"NE"},{"no":"962","name":"Great Plains Pult Inc. dba Nova","addr":"10931 Mackingbird Drive","city":"Omaha","zip":"68137","state":"NE"},{"no":"963","name":"ALL TIME MANUFACTURING CO INC","addr":"2 BRIDGE ST","city":"MONTVILLE","zip":"06353","state":"CT"},{"no":"965","name":"SUBURBAN BUILDING PRODUCTS INC","addr":"1178 Route 547","city":"Howell","zip":"07731","state":"NJ"},{"no":"966","name":"CONTINENTAL WINDOW & GLASS INC","addr":"4311 WEST BELMONT AVE","city":"CHICAGO","zip":"60641","state":"IL"},{"no":"969","name":"Leer Inc.","addr":"206 Leer St.","city":"New Lisbon","zip":"53950","state":"WI"},{"no":"972","name":"Kensington HPP, Inc.","addr":"1136 Industrial Park Road,","city":"Vandergrift","zip":"15690","state":"PA"},{"no":"973","name":"SUN WINDOWS INC","addr":"1515 EAST 18TH ST","city":"OWENSBORO","zip":"42303","state":"KY"},{"no":"976","name":"J&M WINDOW","addr":"1520 CHESTER PIKE","city":"FOLCROFT","zip":"19032","state":"PA"},{"no":"980","name":"SUNRISE WINDOWS","addr":"200 ENTERPRISE DR","city":"TEMPERANCE","zip":"48182-9500","state":"MI"},{"no":"984","name":"Clayton Windows of TN","addr":"1765 Genesis Road","city":"Crossville","zip":"38555","state":"TN"},{"no":"985","name":"JELD-WEN WINDOWS & DOORS (FL)","addr":"355 CENTER COURT","city":"VENICE","zip":"34285","state":"FL"},{"no":"986","name":"All Weather Windows","addr":"18550 - 118A Avenue","city":"Edmonton","zip":"T5S 2K7","state":"AB"},{"no":"987","name":"Sierra Pacific Windows-Merrill","addr":"1815 WATER STREET","city":"MERRILL","zip":"54452","state":"WI"},{"no":"988","name":"American Openings, Inc","addr":"6885 E SOUTHPOINT","city":"TUCSON","zip":"85756","state":"AZ"},{"no":"989","name":"JELD-WEN WINDOWS & DOORS (IA)","addr":"911 INDUSTRIAL AVE.","city":"Grinnell","zip":"50112","state":"IA"},{"no":"990","name":"Lastech LLC","addr":"14010 NE 3rd Court","city":"Vancouver","zip":"98660","state":"WA"},{"no":"992","name":"Great Plains Pult Inc. dba Nova","addr":"","city":"","zip":"","state":""},{"no":"994","name":"ALLIED WINDOW, INC.","addr":"1111 CANAL RD.","city":"CINCINNATI","zip":"45241","state":"OH"},{"no":"997","name":"McDONALD LUMBER CO","addr":"126 CEDAR CREEK ROAD","city":"FAYETTEVILLE","zip":"28312","state":"NC"}];
+
+let soLines  = [];
+let uomData  = {};
+let soLoaded = false;
+let uomLoaded= false;
+
+// ── Customer lookup ──
+const custIdx = {};
+CUSTOMERS.forEach(c => {
+  const key = c.no;
+  if (!custIdx[key]) custIdx[key] = [];
+  custIdx[key].push(c);
+});
+
+const custSearch = document.getElementById('cust-search');
+const custDrop   = document.getElementById('cust-dropdown');
+
+custSearch.addEventListener('input', () => {
+  const q = custSearch.value.trim().toLowerCase();
+  if (!q) { custDrop.classList.remove('open'); return; }
+  const seen = new Set();
+  const matches = CUSTOMERS.filter(c => {
+    const id = c.no + '|' + c.name;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return c.no.startsWith(q) || c.name.toLowerCase().includes(q);
+  }).slice(0, 40);
+  if (!matches.length) { custDrop.classList.remove('open'); return; }
+  custDrop.innerHTML = matches.map((c,i) =>
+    `<div class="cust-option" data-no="${c.no}" data-name="${esc(c.name)}" data-idx="${i}">
+      <strong>${esc(c.name)}</strong><span class="cust-no">#${c.no}</span>
+    </div>`
+  ).join('');
+  custDrop.classList.add('open');
+  custDrop.querySelectorAll('.cust-option').forEach(el => {
+    el.addEventListener('click', () => {
+      const no = el.dataset.no;
+      custSearch.value = no + ' – ' + el.dataset.name;
+      custDrop.classList.remove('open');
+      fillAddress(no);
+    });
+  });
+});
+
+document.addEventListener('click', e => {
+  if (!custSearch.contains(e.target) && !custDrop.contains(e.target))
+    custDrop.classList.remove('open');
+});
+
+function fillAddress(custNo) {
+  const entries = custIdx[custNo] || [];
+  if (!entries.length) return;
+  const c = entries[0];
+  document.getElementById('to-name').value  = c.name;
+  document.getElementById('to-addr1').value = c.addr.replace(/\n/g, ', ');
+  document.getElementById('to-city').value  = c.city;
+  document.getElementById('to-state').value = c.state;
+  document.getElementById('to-zip').value   = c.zip;
+  const note = document.getElementById('multi-addr-note');
+  note.style.display = entries.length > 1 ? 'block' : 'none';
+}
+
+// ── drag/drop ──
+['upload-zone','uom-zone'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (id === 'upload-zone') handleSOFile(f); else handleUOMFile(f);
+  });
+});
+document.getElementById('file-input').addEventListener('change', e => handleSOFile(e.target.files[0]));
+document.getElementById('uom-input').addEventListener('change', e => handleUOMFile(e.target.files[0]));
+
+// ── SO handler ──
+function handleSOFile(file) {
+  if (!file) return;
+  setStatus('upload-status','info',`Reading ${file.name}…`);
+  const r = new FileReader();
+  r.onload = evt => {
+    try {
+      const wb = XLSX.read(evt.target.result,{type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws,{defval:''});
+      if (!rows.length) throw new Error('No data rows found.');
+      const keys = Object.keys(rows[0]);
+      const find = (...candidates) => keys.find(k => candidates.some(c => k.toLowerCase().includes(c.toLowerCase())));
+      const noKey   = find('No.');
+      const refKey  = find('Item Reference No','Reference No');
+      const descKey = find('Description','Desc');
+      const qtyKey  = find('Quantity','Qty');
+      const typeKey = find('Type');
+      if (!noKey || !qtyKey || !descKey) throw new Error('Missing required columns (No., Description, Quantity).');
+      soLines = [];
+      for (const row of rows) {
+        if (typeKey && String(row[typeKey]).trim().toLowerCase() !== 'item') continue;
+        const vPart = String(row[noKey]).trim();
+        if (!vPart) continue;
+        const ref = refKey ? String(row[refKey]).trim() : '';
+        const vendorPart = ref || vPart;
+        const desc = String(row[descKey]).trim();
+        const qty = Number(row[qtyKey]) || 0;
+        if (qty > 0) soLines.push({visionPart:vPart, vendorPart, desc, qty});
+      }
+      if (!soLines.length) throw new Error('No Item rows with Quantity > 0 found.');
+      soLoaded = true;
+      setStatus('upload-status','success',`✓ ${soLines.length} line items loaded from ${file.name}`);
+      tryRenderPreview();
+    } catch(e) { setStatus('upload-status','error',`Error: ${e.message}`); }
+  };
+  r.readAsArrayBuffer(file);
+}
+
+// ── UOM handler ──
+function handleUOMFile(file) {
+  if (!file) return;
+  setStatus('uom-status','info',`Reading ${file.name}…`);
+  const r = new FileReader();
+  r.onload = evt => {
+    try {
+      const wb = XLSX.read(evt.target.result,{type:'array'});
+      const sn = wb.SheetNames.find(s => s.toLowerCase().includes('unit of measure') || s.toLowerCase().includes('uom')) || wb.SheetNames[wb.SheetNames.length-1];
+      const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
+      let hdr = -1;
+      for (let i = 0; i < Math.min(raw.length,5); i++) {
+        if (raw[i].some(c => String(c).toLowerCase().includes('item no'))) { hdr = i; break; }
+      }
+      if (hdr < 0) throw new Error('Header row not found in UOM sheet.');
+      const h = raw[hdr].map(c => String(c).trim());
+      const iIdx = h.findIndex(x => x.toLowerCase().includes('item no'));
+      const cIdx = h.findIndex(x => x.toLowerCase() === 'code');
+      const qIdx = h.findIndex(x => x.toLowerCase().includes('qty. per') || x.toLowerCase().includes('quantity per'));
+      if (iIdx<0||cIdx<0||qIdx<0) throw new Error('UOM sheet missing expected columns.');
+      uomData = {};
+      for (let i = hdr+1; i < raw.length; i++) {
+        const row = raw[i];
+        const item = String(row[iIdx]||'').trim();
+        const code = String(row[cIdx]||'').trim().toUpperCase();
+        const qty  = Number(row[qIdx])||0;
+        if (item && code==='BOX' && qty>0) uomData[item] = qty;
+      }
+      uomLoaded = true;
+      setStatus('uom-status','success',`✓ Loaded carton quantities from "${sn}" (${Object.keys(uomData).length} BOX entries)`);
+      tryRenderPreview();
+    } catch(e) { setStatus('uom-status','error',`Error: ${e.message}`); }
+  };
+  r.readAsArrayBuffer(file);
+}
+
+// ── Preview table ──
+function tryRenderPreview() {
+  if (!soLoaded || !uomLoaded) return;
+  let hasMissing = false;
+  const tbody = document.getElementById('preview-body');
+  tbody.innerHTML = '';
+  soLines.forEach((line, idx) => {
+    const ctnQty = uomData[line.visionPart] || 1;
+    if (!uomData[line.visionPart]) hasMissing = true;
+    const labelCount = Math.ceil(line.qty / ctnQty);
+    const tr = document.createElement('tr');
+    tr.dataset.idx = idx;
+    tr.innerHTML = `
+      <td><code>${esc(line.visionPart)}</code></td>
+      <td><code>${esc(line.vendorPart)}</code></td>
+      <td>${esc(line.desc)}</td>
+      <td>${line.qty.toLocaleString()}</td>
+      <td>
+        <input class="ctn-input" type="number" min="1" value="${ctnQty}" data-idx="${idx}"
+          ${!uomData[line.visionPart] ? 'style="border-color:#f59e0b"' : ''}>
+        ${!uomData[line.visionPart] ? '<span class="badge warn" style="margin-left:4px">!</span>' : ''}
+      </td>
+      <td><span class="badge lbl-badge-${idx}">${labelCount}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  // attach live recalc listeners
+  document.querySelectorAll('.ctn-input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const idx = parseInt(inp.dataset.idx);
+      const newCtn = Math.max(1, parseInt(inp.value) || 1);
+      const newLabels = Math.ceil(soLines[idx].qty / newCtn);
+      document.querySelector(`.lbl-badge-${idx}`).textContent = newLabels;
+      recalcTotal();
+    });
+  });
+  document.getElementById('missing-uom-note').style.display = hasMissing ? 'block' : 'none';
+  recalcTotal();
+  document.getElementById('preview-card').style.display = 'block';
+  document.getElementById('generate-card').style.display = 'block';
+}
+
+function recalcTotal() {
+  let total = 0;
+  document.querySelectorAll('.ctn-input').forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    const ctn = Math.max(1, parseInt(inp.value)||1);
+    total += Math.ceil(soLines[idx].qty / ctn);
+  });
+  document.getElementById('total-label-count').textContent = total;
+}
+
+// ── Generate ──
+function generateLabels() {
+  const poNumber = document.getElementById('po-number').value.trim();
+  const toName   = document.getElementById('to-name').value.trim();
+  const addr1    = document.getElementById('to-addr1').value.trim();
+  const city     = document.getElementById('to-city').value.trim();
+  const state    = document.getElementById('to-state').value.trim();
+  const zip      = document.getElementById('to-zip').value.trim();
+  if (!toName) { alert('Please enter the Ship-To company name.'); return; }
+
+  // build city/state/zip line
+  let cityLine = [city, state].filter(Boolean).join(', ');
+  if (zip) cityLine += ' ' + zip;
+
+  const container = document.getElementById('labels-container');
+  container.innerHTML = '';
+  let totalCount = 0;
+
+  // read current carton qtys from inputs
+  const ctnOverrides = {};
+  document.querySelectorAll('.ctn-input').forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    ctnOverrides[idx] = Math.max(1, parseInt(inp.value)||1);
+  });
+
+  soLines.forEach((line, idx) => {
+    const ctnQty     = ctnOverrides[idx];
+    const labelCount = Math.ceil(line.qty / ctnQty);
+    totalCount += labelCount;
+
+    const grp = document.createElement('div');
+    grp.className = 'label-group-header';
+    grp.textContent = `${line.visionPart} — ${line.desc}  ·  ${labelCount} label${labelCount!==1?'s':''}`;
+    container.appendChild(grp);
+
+    for (let i = 0; i < labelCount; i++) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'label-wrapper';
+      wrapper.appendChild(buildLabel({toName, addr1, cityLine, visionPart:line.visionPart, vendorPart:line.vendorPart, desc:line.desc, cartonQty:ctnQty, poNumber}));
+      container.appendChild(wrapper);
+    }
+  });
+
+  document.getElementById('print-summary').textContent =
+    `${soLines.length} items · ${totalCount} total labels`;
+  document.getElementById('setup-view').style.display = 'none';
+  document.getElementById('labels-view').style.display = 'block';
+}
+
+function uid() { return Math.random().toString(36).slice(2); }
+
+function buildLabel({toName, addr1, cityLine, visionPart, vendorPart, desc, cartonQty, poNumber}) {
+  const lbl = document.createElement('div');
+  lbl.className = 'shipping-label';
+
+  // Row 1: To / From
+  lbl.innerHTML += `
+  <div class="lbl-header">
+    <div class="lbl-addr">
+      <span class="lbl-addr-tag">To:</span>
+      <div class="lbl-addr-name">${esc(toName)}</div>
+      <div>${esc(addr1)}</div>
+      <div>${esc(cityLine)}</div>
+    </div>
+    <div class="lbl-addr right">
+      <span class="lbl-addr-tag">From:</span>
+      <div class="lbl-addr-name">${FROM_NAME}</div>
+      <div>${FROM_ADDR}</div>
+    </div>
+  </div>`;
+
+  // Row 2: Part # / Description
+  const partId = 'bp' + uid();
+  const partSection = document.createElement('div');
+  partSection.className = 'lbl-part-row';
+  partSection.innerHTML = `
+    <div class="lbl-cell">
+      <div class="lbl-cell-tag">Part #:</div>
+      <svg id="${partId}"></svg>
+    </div>
+    <div class="lbl-cell right">
+      <div class="lbl-cell-tag">Parts Description:</div>
+      <div class="lbl-desc-text">${esc(desc)}</div>
+    </div>`;
+  lbl.appendChild(partSection);
+  renderBC(partSection.querySelector('svg'), visionPart, 36);
+
+  // Row 3: Quantity
+  const qtyId = 'bq' + uid();
+  const qtySection = document.createElement('div');
+  qtySection.className = 'lbl-qty-row';
+  qtySection.innerHTML = `
+    <div class="lbl-cell">
+      <div class="lbl-cell-tag">Quantity:</div>
+      <svg id="${qtyId}"></svg>
+    </div>
+    <div class="lbl-cell right"></div>`;
+  lbl.appendChild(qtySection);
+  renderBC(qtySection.querySelector('svg'), String(cartonQty), 32);
+
+  // Row 4: PO # / Vendor #
+  const vendId = 'bv' + uid();
+  const poSection = document.createElement('div');
+  poSection.className = 'lbl-po-row';
+  let poCell = '';
+  let poId = '';
+  if (poNumber) {
+    poId = 'bpo' + uid();
+    poCell = `<div class="lbl-po-cell"><div class="lbl-cell-tag">Customer PO #:</div><svg id="${poId}"></svg></div>`;
+  } else {
+    poCell = `<div class="lbl-po-cell"><div class="lbl-cell-tag">Customer PO #:</div></div>`;
+  }
+  poSection.innerHTML = `${poCell}<div class="lbl-po-cell right"><div class="lbl-cell-tag">Vendor #:</div><svg id="${vendId}"></svg></div>`;
+  lbl.appendChild(poSection);
+  if (poNumber) renderBC(poSection.querySelector(`#${poId}`), poNumber, 32);
+  renderBC(poSection.querySelector(`#${vendId}`), vendorPart, 32);
+
+
+  return lbl;
+}
+
+function renderBC(svgEl, value, height) {
+  try {
+    JsBarcode(svgEl, value, {
+      format:'CODE128', width:1.4, height, displayValue:true,
+      fontSize:8, margin:2, background:'#ffffff', lineColor:'#000000'
+    });
+  } catch(e) {
+    svgEl.insertAdjacentHTML('afterend', `<span style="font-size:6pt;color:red">[err:${value}]</span>`);
+  }
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,' ');
+}
+function setStatus(id,type,msg) {
+  const el = document.getElementById(id);
+  el.className=`status-bar ${type}`;el.textContent=msg;
+}
+function goBack() {
+  document.getElementById('labels-view').style.display='none';
+  document.getElementById('setup-view').style.display='block';
+}
+</script>
+</body>
+</html>
